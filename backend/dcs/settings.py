@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.authentication',
     'apps.storage',
+    'apps.folders',
+    'apps.files',
 ]
 
 MIDDLEWARE = [
