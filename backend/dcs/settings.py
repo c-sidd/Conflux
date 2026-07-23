@@ -49,9 +49,11 @@ INSTALLED_APPS = [
     'apps.storage',
     'apps.folders',
     'apps.files',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -166,3 +168,8 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='*/30'),
     },
 }
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
