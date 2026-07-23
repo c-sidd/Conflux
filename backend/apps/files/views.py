@@ -1,6 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import File
 from .serializers import FileSerializer
@@ -60,6 +61,27 @@ class FileViewSet(viewsets.ModelViewSet):
         manager.delete_file(
             account_id=instance.storage_account.id, 
             provider_file_id=instance.provider_file_id,
+            filename=instance.name,
             size=instance.size
         )
         instance.delete()
+
+    @action(detail=False, methods=['post'], url_path='simulate')
+    def simulate(self, request):
+        filename = request.data.get('name')
+        file_size = request.data.get('size')
+        if not filename or file_size is None:
+            return Response({'error': 'name and size are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            file_size = int(file_size)
+        except ValueError:
+            return Response({'error': 'size must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        manager = StorageManager(user=request.user)
+        result = manager.simulate_placement(filename, file_size)
+        
+        if not result.get('success'):
+            return Response({'error': result.get('error')}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response(result, status=status.HTTP_200_OK)

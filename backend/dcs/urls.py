@@ -22,4 +22,6 @@ urlpatterns = [
     path('api/auth/', include('apps.authentication.urls')),
     path('api/', include('apps.folders.urls')),
     path('api/', include('apps.files.urls')),
+    path('api/storage/', include('apps.storage.urls')),
+    path('api/dashboard/', include('apps.dashboard.urls')),
 ]

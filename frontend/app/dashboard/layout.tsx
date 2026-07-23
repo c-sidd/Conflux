@@ -34,17 +34,17 @@ export default function DashboardLayout({
           </h1>
         </div>
         <nav className="flex-1 px-4 space-y-2">
-          <a href="/dashboard" className="flex items-center gap-3 px-3 py-2 bg-zinc-800 rounded-lg text-zinc-100 font-medium">
-            <Folder className="w-5 h-5 text-blue-400" />
+          <a href="/dashboard" className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800/50 rounded-lg text-zinc-400 transition-colors">
+            <Folder className="w-5 h-5" />
             My Files
           </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800/50 rounded-lg text-zinc-400 transition-colors">
+          <a href="/dashboard/storage" className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800/50 rounded-lg text-zinc-400 transition-colors">
             <HardDrive className="w-5 h-5" />
             Storage Accounts
           </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800/50 rounded-lg text-zinc-400 transition-colors">
+          <a href="/dashboard/insights" className="flex items-center gap-3 px-3 py-2 hover:bg-zinc-800/50 rounded-lg text-zinc-400 transition-colors">
             <Settings className="w-5 h-5" />
-            Settings
+            Storage Insights
           </a>
         </nav>
         <div className="p-4 border-t border-zinc-800">
