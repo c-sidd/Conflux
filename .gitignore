@@ -1,0 +1,25 @@
+# Python / Django
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+.env
+staticfiles/
+media/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# Logs
+logs/
+*.log
