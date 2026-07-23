@@ -12,6 +12,8 @@ import environ
 User = get_user_model()
 env = environ.Env()
 
+from apps.storage.models import StorageAccount
+
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -34,6 +36,22 @@ class GoogleLoginView(APIView):
                 'first_name': first_name,
                 'last_name': last_name
             })
+
+            # Save the Google Drive credentials as a StorageAccount
+            access_token = request.data.get('access_token')
+            refresh_token = request.data.get('refresh_token')
+            if access_token:
+                StorageAccount.objects.update_or_create(
+                    user=user,
+                    email=email,
+                    provider='google_drive',
+                    defaults={
+                        'access_token': access_token,
+                        'refresh_token': refresh_token or '',
+                        # Set default initial quotas: 15 GB for Google Drive
+                        'total_storage': 15 * 1024 * 1024 * 1024,
+                    }
+                )
 
             refresh = RefreshToken.for_user(user)
 

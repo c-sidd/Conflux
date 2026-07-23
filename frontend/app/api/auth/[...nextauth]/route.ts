@@ -6,6 +6,13 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          scope: "openid email profile https://www.googleapis.com/auth/drive.file",
+          access_type: "offline",
+          prompt: "consent",
+        }
+      }
     }),
   ],
   callbacks: {
@@ -18,7 +25,11 @@ export const authOptions: NextAuthOptions = {
           const res = await fetch(`${backendUrl}/api/auth/google/`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id_token: account.id_token }),
+            body: JSON.stringify({ 
+              id_token: account.id_token,
+              access_token: account.access_token,
+              refresh_token: account.refresh_token,
+            }),
           });
 
           if (res.ok) {

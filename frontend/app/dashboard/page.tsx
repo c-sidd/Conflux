@@ -140,7 +140,7 @@ export default function Dashboard() {
               disabled={uploading}
             />
             <label htmlFor="file-upload">
-              <Button render={
+              <Button nativeButton={false} render={
                 <span>
                   {uploading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
