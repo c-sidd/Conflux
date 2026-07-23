@@ -102,6 +102,12 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             access_token = tokens.get('access_token')
             refresh_token = tokens.get('refresh_token') # Sent only on first authentication if offline access is approved
             expires_in = tokens.get('expires_in', 3600)
+            granted_scopes = tokens.get('scope', '')
+            
+            print(f"--- OAUTH TOKEN RESPONSE ---")
+            print(f"Granted Scopes: {granted_scopes}")
+            print(f"Has Refresh Token: {bool(refresh_token)}")
+            print(f"----------------------------")
             
             # Fetch user email associated with this drive account
             profile_response = requests.get(
@@ -131,6 +137,15 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 quota = drive_response.json().get('storageQuota', {})
                 total_storage = int(quota.get('limit', 0))
                 used_storage = int(quota.get('usage', 0))
+            else:
+                print(f"--- GOOGLE API ERROR IN OAUTH CONNECT ---")
+                print(f"Endpoint: https://www.googleapis.com/drive/v3/about")
+                print(f"HTTP Status: {drive_response.status_code}")
+                print(f"Response: {drive_response.text}")
+                print(f"----------------------------------------")
+                # Don't fail the whole connection if quota fetch fails, but log it
+                # Wait, actually we want to see it, so raise a ValueError or just log it
+                pass
 
             # Create or update StorageAccount
             defaults = {
