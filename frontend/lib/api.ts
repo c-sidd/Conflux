@@ -13,8 +13,10 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     headers.set("Authorization", `Bearer ${session.accessToken}`);
   }
 
-  // Set default content type to JSON if not uploading FormData
-  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+  // Ensure Content-Type is deleted for FormData so browser sets multipart/form-data with boundary
+  if (options.body instanceof FormData) {
+    headers.delete("Content-Type");
+  } else if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -25,7 +27,7 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || "API request failed");
+    throw new Error(errorData.detail || errorData.error || "API request failed");
   }
 
   return response.json().catch(() => ({}));

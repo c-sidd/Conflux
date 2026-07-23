@@ -1,41 +1,49 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import File
 from .serializers import FileSerializer
 from apps.storage.manager import StorageManager
 from apps.storage.models import StorageAccount
 
+logger = logging.getLogger(__name__)
+
 class FileViewSet(viewsets.ModelViewSet):
     serializer_class = FileSerializer
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         return File.objects.filter(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
+        print(f"\n================ [FILE UPLOAD REQUEST LOG] ================")
+        print(f"Request Content-Type: {request.content_type}")
+        print(f"Request FILES: {request.FILES}")
+        print(f"Request Data: {request.data}")
+        print(f"===========================================================\n")
+        
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:
+            print("ERROR: No file provided in request.FILES under 'file' key.")
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
         folder_id = request.data.get('folder')
-        
-        # We need a StorageManager instance
         manager = StorageManager(user=request.user)
         
         try:
-            # Upload file to the best cloud storage account
+            print(f"Uploading file '{uploaded_file.name}' ({uploaded_file.size} bytes, mime: {uploaded_file.content_type})...")
             upload_result = manager.upload_file(
                 file_obj=uploaded_file.file,
                 filename=uploaded_file.name,
                 mime_type=uploaded_file.content_type,
                 size=uploaded_file.size
             )
+            print(f"Upload Result: {upload_result}")
             
-            # Create File model instance
             storage_account = StorageAccount.objects.get(id=upload_result['account_id'])
             
             file_instance = File.objects.create(
@@ -50,13 +58,14 @@ class FileViewSet(viewsets.ModelViewSet):
             )
             
             serializer = self.get_serializer(file_instance)
+            print(f"File model created successfully with ID: {file_instance.id}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
+            print(f"ERROR DURING FILE UPLOAD: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_destroy(self, instance):
-        # We also need to delete from physical storage
         manager = StorageManager(user=self.request.user)
         manager.delete_file(
             account_id=instance.storage_account.id, 
