@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'apps.accounts',
     'apps.authentication',
+    'apps.storage',
 ]
 
 MIDDLEWARE = [
@@ -145,3 +146,6 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
