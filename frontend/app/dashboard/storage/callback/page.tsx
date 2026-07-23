@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { fetchApi } from "@/lib/api";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,20 @@ import { Button } from "@/components/ui/button";
 export default function OAuthCallback() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session, status } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(true);
 
   useEffect(() => {
+    // Wait for NextAuth to establish session authentication first
+    if (status === "loading") return;
+
+    if (status === "unauthenticated") {
+      setError("You must be logged into DCS to connect storage accounts.");
+      setProcessing(false);
+      return;
+    }
+
     const code = searchParams.get("code");
     if (!code) {
       setError("No authorization code received from Google.");
@@ -42,7 +53,7 @@ export default function OAuthCallback() {
     };
 
     connectAccount();
-  }, [searchParams, router]);
+  }, [status, searchParams, router]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-zinc-950 text-white p-4">
@@ -58,8 +69,8 @@ export default function OAuthCallback() {
             <ShieldAlert className="w-12 h-12 text-red-500 mx-auto" />
             <h1 className="text-xl font-bold text-red-400">Connection Failed</h1>
             <p className="text-zinc-400 text-sm">{error}</p>
-            <Button onClick={() => router.push("/dashboard/storage")} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white">
-              Back to Storage Accounts
+            <Button onClick={() => router.push(status === "unauthenticated" ? "/" : "/dashboard/storage")} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white">
+              {status === "unauthenticated" ? "Log in to DCS" : "Back to Storage Accounts"}
             </Button>
           </>
         ) : null}
