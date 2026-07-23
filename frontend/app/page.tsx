@@ -1,6 +1,7 @@
 "use client";
 
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
@@ -15,26 +16,7 @@ export default function Home() {
   }
 
   if (session) {
-    return (
-      <div className="flex flex-col h-screen items-center justify-center bg-zinc-950 text-white p-4">
-        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl text-center space-y-6">
-          <div className="mx-auto bg-gradient-to-tr from-blue-500 to-purple-600 rounded-full w-20 h-20 flex items-center justify-center text-2xl font-bold">
-            {session.user?.name?.charAt(0) || "U"}
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold mb-2">Welcome to DCS</h1>
-            <p className="text-zinc-400">Signed in as {session.user?.email}</p>
-          </div>
-          <Button
-            variant="destructive"
-            className="w-full font-semibold"
-            onClick={() => signOut()}
-          >
-            Sign Out
-          </Button>
-        </div>
-      </div>
-    );
+    redirect("/dashboard");
   }
 
   return (

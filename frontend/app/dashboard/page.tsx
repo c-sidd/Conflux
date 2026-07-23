@@ -107,12 +107,12 @@ export default function Dashboard() {
         <h2 className="text-3xl font-bold text-white">My Files</h2>
         <div className="flex items-center gap-4">
           <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
-            <DialogTrigger asChild>
+            <DialogTrigger render={
               <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 New Folder
               </Button>
-            </DialogTrigger>
+            } />
             <DialogContent className="bg-zinc-900 border border-zinc-800 text-white">
               <DialogHeader>
                 <DialogTitle>Create New Folder</DialogTitle>
@@ -140,7 +140,7 @@ export default function Dashboard() {
               disabled={uploading}
             />
             <label htmlFor="file-upload">
-              <Button asChild className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg cursor-pointer">
+              <Button render={
                 <span>
                   {uploading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
@@ -149,7 +149,7 @@ export default function Dashboard() {
                   )}
                   Upload File
                 </span>
-              </Button>
+              } className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg cursor-pointer" />
             </label>
           </div>
         </div>
@@ -173,11 +173,11 @@ export default function Dashboard() {
                       <span className="font-medium text-zinc-200 truncate">{folder.name}</span>
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger render={
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
                           <MoreVertical className="w-4 h-4" />
                         </Button>
-                      </DropdownMenuTrigger>
+                      } />
                       <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200">
                         <DropdownMenuItem className="text-red-400 hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer" onClick={() => handleDeleteFolder(folder.id)}>
                           <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -221,11 +221,11 @@ export default function Dashboard() {
                         <td className="p-4 text-zinc-500 text-sm">{file.mime_type.split('/')[1] || 'Unknown'}</td>
                         <td className="p-4 text-right">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                            <DropdownMenuTrigger render={
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500">
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
-                            </DropdownMenuTrigger>
+                            } />
                             <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200">
                               {file.web_view_link && (
                                 <DropdownMenuItem className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer" onClick={() => window.open(file.web_view_link, "_blank")}>
