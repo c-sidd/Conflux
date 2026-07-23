@@ -1,13 +1,24 @@
+import logging
+import traceback
+import requests
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.conf import settings
 from django.utils import timezone
-import requests
 from .models import StorageAccount, ActivityLog
 from .serializers import StorageAccountSerializer, ActivityLogSerializer
 from .manager import StorageManager
+
+logger = logging.getLogger(__name__)
+
+def mask_token(token: str) -> str:
+    if not token:
+        return "NONE"
+    if len(token) <= 15:
+        return token[:3] + "..."
+    return f"{token[:10]}...{token[-5:]}"
 
 class StorageAccountViewSet(viewsets.ModelViewSet):
     serializer_class = StorageAccountSerializer
@@ -19,62 +30,105 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='test-connection')
     def test_connection(self, request, pk=None):
         account = self.get_object()
+        print(f"\n================ [TEST CONNECTION LOG] ================")
+        print(f"Target Storage Account: ID {account.id} | {account.nickname} ({account.provider_email})")
+        
         success = account.refresh_access_token()
-        if success:
-            try:
-                # Test call to Google Drive API
-                res = requests.get(
-                    "https://www.googleapis.com/drive/v3/about?fields=storageQuota",
-                    headers={"Authorization": f"Bearer {account.access_token}"}
-                )
-                if res.status_code == 200:
-                    account.health_status = 'healthy'
-                    # Update storage quotas
-                    data = res.json().get('storageQuota', {})
-                    account.total_storage = int(data.get('limit', 0))
-                    account.used_storage = int(data.get('usage', 0))
-                    account.save()
-                    return Response({"status": "healthy", "message": "Connection tested successfully."})
-                else:
-                    account.health_status = 'unauthorized'
-                    account.save()
-                    return Response({"status": "unauthorized", "message": "Google API rejected access."}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
-                account.health_status = 'offline'
+        token = account.access_token if success else ""
+        print(f"Masked Access Token: {mask_token(token)}")
+        
+        if not success:
+            print("Failed to refresh OAuth access token.")
+            print("========================================================\n")
+            account.health_status = 'expired_token'
+            account.save()
+            return Response({"status": "failed", "message": "Failed to refresh OAuth tokens."}, status=status.HTTP_400_BAD_REQUEST)
+
+        url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
+        print(f"Calling Google Drive API URL: {url}")
+        
+        try:
+            res = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+            print(f"HTTP Response Status Code: {res.status_code}")
+            print(f"Complete JSON Response from Google:\n{res.text}")
+            
+            if res.status_code == 200:
+                account.health_status = 'healthy'
+                data = res.json().get('storageQuota', {})
+                account.total_storage = int(data.get('limit') or 0)
+                account.used_storage = int(data.get('usage') or 0)
                 account.save()
-                return Response({"status": "offline", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"status": "failed", "message": "Failed to refresh OAuth tokens."}, status=status.HTTP_400_BAD_REQUEST)
+                print("Successfully updated StorageAccount model in PostgreSQL.")
+                print("========================================================\n")
+                return Response({"status": "healthy", "message": "Connection tested successfully.", "quota": data})
+            else:
+                err_data = res.json().get('error', {})
+                msg = err_data.get('message', res.text)
+                account.health_status = 'unauthorized' if res.status_code == 401 else 'offline'
+                account.save()
+                print(f"Google API Error Code: {err_data.get('code', res.status_code)}")
+                print(f"Google API Error Message: {msg}")
+                print("========================================================\n")
+                return Response({"status": "error", "http_status": res.status_code, "google_error": err_data, "message": msg}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print("EXCEPTION OCCURRED DURING TEST CONNECTION:")
+            traceback.print_exc()
+            print("========================================================\n")
+            account.health_status = 'offline'
+            account.save()
+            return Response({"status": "exception", "error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='sync-quota')
     def sync_quota(self, request, pk=None):
         account = self.get_object()
+        print(f"\n================ [SYNC QUOTA LOG] ================")
+        print(f"Target Account: ID {account.id} | {account.nickname} ({account.provider_email})")
+        
+        account.refresh_access_token()
+        token = account.access_token
+        print(f"Masked Access Token: {mask_token(token)}")
+        
+        url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
+        print(f"Calling Google Drive API URL: {url}")
+        
         try:
-            manager = StorageManager(self.request.user)
-            # Fetch instance provider
-            provider = manager._get_provider_instance(account)
-            total, used = provider.get_quota()
-            account.total_storage = total
-            account.used_storage = used
-            account.health_status = 'healthy'
-            account.save()
+            res = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+            print(f"HTTP Response Status Code: {res.status_code}")
+            print(f"Complete JSON Response from Google:\n{res.text}")
             
-            # Log sync activity
-            ActivityLog.objects.create(
-                user=self.request.user,
-                action='sync',
-                details={'drive_nickname': account.nickname, 'drive_email': account.provider_email}
-            )
-            return Response(StorageAccountSerializer(account).data)
+            if res.status_code == 200:
+                data = res.json().get('storageQuota', {})
+                account.total_storage = int(data.get('limit') or 0)
+                account.used_storage = int(data.get('usage') or 0)
+                account.health_status = 'healthy'
+                account.save()
+                
+                ActivityLog.objects.create(
+                    user=self.request.user,
+                    action='sync',
+                    details={'drive_nickname': account.nickname, 'drive_email': account.provider_email}
+                )
+                print("Successfully updated StorageAccount model in PostgreSQL.")
+                print("========================================================\n")
+                return Response(StorageAccountSerializer(account).data)
+            else:
+                err_data = res.json().get('error', {})
+                msg = err_data.get('message', res.text)
+                account.health_status = 'offline'
+                account.save()
+                print(f"Google API Error: {msg}")
+                print("========================================================\n")
+                return Response({"error": msg, "google_error": err_data}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            print("EXCEPTION OCCURRED DURING SYNC QUOTA:")
+            traceback.print_exc()
+            print("========================================================\n")
             account.health_status = 'offline'
             account.save()
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], url_path='connect-oauth')
     def connect_oauth(self, request):
-        """
-        Receives authorization code from frontend and connects the Google Drive account as a storage account.
-        """
         code = request.data.get('code')
         redirect_uri = request.data.get('redirect_uri')
         nickname = request.data.get('nickname', 'Google Drive')
@@ -82,7 +136,9 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
         if not code or not redirect_uri:
             return Response({'error': 'code and redirect_uri are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Exchange authorization code for access/refresh tokens
+        print(f"\n================ [CONNECT OAUTH LOG] ================")
+        print(f"Exchanging OAuth Code with Google token endpoint...")
+        
         try:
             token_response = requests.post(
                 "https://oauth2.googleapis.com/token",
@@ -94,28 +150,35 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                     "grant_type": "authorization_code",
                 }
             )
+            print(f"Token Exchange HTTP Status: {token_response.status_code}")
             
             if token_response.status_code != 200:
+                print(f"Token Exchange Failed: {token_response.text}")
+                print("========================================================\n")
                 return Response({'error': 'Failed to exchange OAuth code', 'details': token_response.json()}, status=status.HTTP_400_BAD_REQUEST)
             
             tokens = token_response.json()
             access_token = tokens.get('access_token')
-            refresh_token = tokens.get('refresh_token') # Sent only on first authentication if offline access is approved
+            refresh_token = tokens.get('refresh_token')
             expires_in = tokens.get('expires_in', 3600)
             granted_scopes = tokens.get('scope', '')
             
-            print(f"--- OAUTH TOKEN RESPONSE ---")
+            print(f"Masked Access Token: {mask_token(access_token)}")
             print(f"Granted Scopes: {granted_scopes}")
             print(f"Has Refresh Token: {bool(refresh_token)}")
-            print(f"----------------------------")
             
             # Fetch user email associated with this drive account
+            profile_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+            print(f"Fetching User Profile: {profile_url}")
             profile_response = requests.get(
-                "https://www.googleapis.com/oauth2/v3/userinfo",
+                profile_url,
                 headers={"Authorization": f"Bearer {access_token}"}
             )
+            print(f"Profile Response Status: {profile_response.status_code}")
             
             if profile_response.status_code != 200:
+                print(f"Profile Fetch Failed: {profile_response.text}")
+                print("========================================================\n")
                 return Response({'error': 'Failed to fetch user info for connected drive'}, status=status.HTTP_400_BAD_REQUEST)
                 
             profile = profile_response.json()
@@ -123,29 +186,41 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             account_id = profile.get('sub')
             
             if not email:
+                print("No email found in user profile.")
+                print("========================================================\n")
                 return Response({'error': 'Unable to retrieve email from Google Account'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Fetch drive quota info
+            drive_quota_url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
+            print(f"Fetching Drive Quota API: {drive_quota_url}")
             drive_response = requests.get(
-                "https://www.googleapis.com/drive/v3/about?fields=storageQuota",
+                drive_quota_url,
                 headers={"Authorization": f"Bearer {access_token}"}
             )
+            print(f"Drive Quota HTTP Status Code: {drive_response.status_code}")
+            print(f"Drive Quota Response JSON:\n{drive_response.text}")
             
             total_storage = 0
             used_storage = 0
+            health_status = 'healthy'
+            
             if drive_response.status_code == 200:
                 quota = drive_response.json().get('storageQuota', {})
-                total_storage = int(quota.get('limit', 0))
-                used_storage = int(quota.get('usage', 0))
+                total_storage = int(quota.get('limit') or 0)
+                used_storage = int(quota.get('usage') or 0)
+                print(f"Parsed Quota -> Total: {total_storage} bytes, Used: {used_storage} bytes")
             else:
-                print(f"--- GOOGLE API ERROR IN OAUTH CONNECT ---")
-                print(f"Endpoint: https://www.googleapis.com/drive/v3/about")
-                print(f"HTTP Status: {drive_response.status_code}")
-                print(f"Response: {drive_response.text}")
-                print(f"----------------------------------------")
-                # Don't fail the whole connection if quota fetch fails, but log it
-                # Wait, actually we want to see it, so raise a ValueError or just log it
-                pass
+                err_body = drive_response.json().get('error', {})
+                err_msg = err_body.get('message', drive_response.text)
+                print(f"CRITICAL: Google Drive API Quota Fetch Failed!")
+                print(f"Error Code: {err_body.get('code', drive_response.status_code)}")
+                print(f"Error Message: {err_msg}")
+                health_status = 'offline'
+                print("========================================================\n")
+                return Response({
+                    'error': f"Google Drive API Error ({drive_response.status_code}): {err_msg}",
+                    'details': err_body
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Create or update StorageAccount
             defaults = {
@@ -154,10 +229,9 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 'token_expiry': timezone.now() + timezone.timedelta(seconds=expires_in),
                 'total_storage': total_storage,
                 'used_storage': used_storage,
-                'health_status': 'healthy',
+                'health_status': health_status,
                 'is_active': True,
             }
-            # Only update refresh_token if Google sent one (can be null if already connected previously)
             if refresh_token:
                 defaults['refresh_token'] = refresh_token
 
@@ -168,25 +242,27 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 defaults=defaults
             )
             
-            # If nickname is default and it was just created, assign the user's nickname parameter
             if created or nickname != 'Google Drive':
                 account.nickname = nickname
                 account.save()
 
-            # Audit connect activity
             ActivityLog.objects.create(
                 user=request.user,
                 action='connect',
                 details={'drive_nickname': account.nickname, 'drive_email': account.provider_email}
             )
-
+            
+            print(f"Successfully saved StorageAccount #{account.id} in DB.")
+            print("========================================================\n")
             return Response(StorageAccountSerializer(account).data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print("EXCEPTION OCCURRED DURING CONNECT OAUTH:")
+            traceback.print_exc()
+            print("========================================================\n")
+            return Response({'error': str(e), 'traceback': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def perform_destroy(self, instance):
-        # Log disconnect activity
         ActivityLog.objects.create(
             user=self.request.user,
             action='disconnect',
@@ -199,4 +275,4 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return ActivityLog.objects.filter(user=self.request.user)[:50] # return last 50 entries
+        return ActivityLog.objects.filter(user=self.request.user)[:50]
