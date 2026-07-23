@@ -40,7 +40,7 @@ export default function StorageAccounts() {
   const handleConnectGoogle = () => {
     const clientId = "819289186607-o1kr7vq1vnacd6ef79664skvao6euol0.apps.googleusercontent.com";
     const redirectUri = `${window.location.origin}/dashboard/storage/callback`;
-    const scope = "openid email profile https://www.googleapis.com/auth/drive.file";
+    const scope = "openid email profile https://www.googleapis.com/auth/drive";
     
     // Force consent and account selection to ensure refresh token is always returned
     const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
