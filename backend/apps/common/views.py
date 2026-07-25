@@ -22,5 +22,30 @@ class HealthCheckView(APIView):
             "status": "healthy",
             "database": "connected",
             "environment": "development",
-            "api_version": "v1.5A.5"
+            "api_version": "v1.0.0"
         })
+
+from apps.common.branding import (
+    APP_NAME, CURRENT_VERSION, APP_TAGLINE, APP_DESCRIPTION, WORKSPACE_FOLDER_NAME
+)
+
+class AboutView(APIView):
+    permission_classes = []
+
+    def get(self, request):
+        return api_success(data={
+            "name": APP_NAME,
+            "version": CURRENT_VERSION,
+            "tagline": APP_TAGLINE,
+            "description": APP_DESCRIPTION,
+            "provider": APP_NAME,
+            "workspaceFolder": WORKSPACE_FOLDER_NAME,
+            "features": [
+                "Multiple Google Drive Accounts",
+                "Virtual Filesystem",
+                "Storage Pooling",
+                "Smart Placement Strategy",
+                "DCS Workspace Isolation"
+            ]
+        })
+

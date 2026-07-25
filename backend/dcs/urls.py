@@ -3,14 +3,16 @@ URL configuration for dcs project with API v1 versioning and Health check.
 """
 from django.contrib import admin
 from django.urls import path, include
-from apps.common.views import HealthCheckView
+from apps.common.views import HealthCheckView, AboutView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # Health Check
+    # Health & About Metadata
     path('api/v1/health/', HealthCheckView.as_view(), name='health-v1'),
     path('api/health/', HealthCheckView.as_view(), name='health-legacy'),
+    path('api/v1/about/', AboutView.as_view(), name='about-v1'),
+    path('api/about/', AboutView.as_view(), name='about-legacy'),
 
     # API v1 routes (Primary Versioned APIs)
     path('api/v1/auth/', include('apps.authentication.urls')),
