@@ -1,31 +1,40 @@
 export const colors = {
-  background: "#09090b", // zinc-950
-  card: {
-    base: "#18181b", // zinc-900
-    hover: "#27272a", // zinc-800
-    border: "#27272a",
-  },
-  primary: {
-    from: "#2563eb", // blue-600
-    to: "#9333ea", // purple-600
-    hoverFrom: "#3b82f6",
-    hoverTo: "#a855f7",
-  },
-  secondary: {
-    base: "#27272a",
-    hover: "#3f3f46",
-    text: "#e4e4e7",
-  },
-  status: {
-    success: "#22c55e", // green-500
-    warning: "#f59e0b", // amber-500
-    danger: "#ef4444", // red-500
-    info: "#3b82f6", // blue-500
-  },
+  // Layered Background System
+  appBackground: "#F8FAFC",  // slate-50
+  sidebar: "#FFFFFF",        // pure white
+  mainContent: "#FCFCFD",   // off-white layered background
+  card: "#FFFFFF",           // pure white card & modal background
+  
+  // States & Selection
+  hover: "#F1F5F9",          // slate-100
+  selectedRow: "#EFF6FF",    // soft blue selection
+  
+  // Borders & Dividers
+  border: "#E2E8F0",         // slate-200
+  divider: "#CBD5E1",        // slate-300
+  
+  // Typography Hierarchy
   text: {
-    heading: "#ffffff",
-    body: "#e4e4e7",
-    muted: "#a1a1aa",
-    subtle: "#71717a",
+    primary: "#0F172A",      // slate-900
+    secondary: "#475569",    // slate-600
+    muted: "#94A3B8",        // slate-400
+    subtle: "#CBD5E1",       // slate-300
+    inverse: "#FFFFFF",
+  },
+  
+  // Brand & Accent Colors
+  primary: {
+    base: "#2563EB",         // blue-600
+    hover: "#1D4ED8",        // blue-700
+    light: "#DBEAFE",        // blue-100
+    text: "#FFFFFF",
+  },
+  
+  // Status Colors
+  status: {
+    success: "#16A34A",      // green-600
+    warning: "#F59E0B",      // amber-500
+    danger: "#DC2626",       // red-600
+    info: "#06B6D4",         // cyan-500
   }
 } as const;
