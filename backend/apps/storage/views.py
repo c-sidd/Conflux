@@ -193,9 +193,26 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             # Business Rule 1: One Google account = one Conflux user constraint
             existing = StorageAccount.objects.filter(provider_email=email, provider='google').exclude(user=request.user).first()
             if existing:
-                print(f"REJECTED: Google account {email} is already linked to another Conflux user account.")
+                force_relink = request.data.get('force_relink', False)
+                if force_relink:
+                    print(f"TRANSFERRING: Re-linking Google account {email} from user {existing.user.email} to {request.user.email}")
+                    existing.user = request.user
+                    existing.access_token = access_token
+                    if refresh_token:
+                        existing.refresh_token = refresh_token
+                    existing.token_expiry = timezone.now() + timezone.timedelta(seconds=expires_in)
+                    existing.total_storage = total_storage
+                    existing.used_storage = used_storage
+                    existing.health_status = health_status
+                    existing.save()
+                    return Response(StorageAccountSerializer(existing).data, status=status.HTTP_200_OK)
+
+                print(f"REJECTED: Google account {email} is already linked to another Conflux user account ({existing.user.email}).")
                 print("========================================================\n")
-                return Response({'error': 'This Google Drive account is already linked to another Conflux user account.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    'error': f'This Google Drive account ({email}) is already linked to another Conflux user account ({existing.user.email}).',
+                    'can_force_relink': True
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Fetch drive quota info
             drive_quota_url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
