@@ -3,12 +3,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { fetchApi } from "@/lib/api";
 import { 
-  Folder as FolderIcon, File as FileIcon, UploadCloud, Plus, MoreVertical, Trash2, 
-  HardDrive, Download, ChevronRight, Activity, ArrowLeft, Eye, Edit2, Move, Copy, Star,
-  LayoutGrid, LayoutList, RotateCcw, ShieldAlert, Check
+  Folder as FolderIcon, FileText, Image as ImageIcon, Video as VideoIcon, 
+  FileSpreadsheet, File as GenericFileIcon, UploadCloud, Plus, MoreVertical, Trash2, 
+  HardDrive, Download, ChevronRight, ArrowLeft, Eye, Edit2, Move, Copy, Star,
+  LayoutList, LayoutGrid, RotateCcw, Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,14 +49,13 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   const [stats, setStats] = useState<any>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: null, name: "Root" }]);
   
-  // View mode (List / Grid)
+  // Default to List View (Google Drive standard)
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
-  // Selection
+  // Selection state
   const [selectedFileIds, setSelectedFileIds] = useState<number[]>([]);
   const [selectedFolderIds, setSelectedFolderIds] = useState<number[]>([]);
 
@@ -86,21 +85,18 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
 
   const loadData = async () => {
     try {
-      const [statsData, foldersData, filesData, activitiesData] = await Promise.all([
+      const [statsData, foldersData, filesData] = await Promise.all([
         fetchApi("/api/v1/dashboard/stats/"),
         fetchApi("/api/v1/folders/"),
         fetchApi("/api/v1/files/"),
-        fetchApi("/api/v1/storage/activities/"),
       ]);
       setStats(statsData?.data || statsData);
       setFolders(Array.isArray(foldersData) ? foldersData : (foldersData?.data || []));
       setFiles(Array.isArray(filesData) ? filesData : (filesData?.data || []));
-      setActivities(Array.isArray(activitiesData) ? activitiesData : (activitiesData?.data || []));
     } catch (e) {
       console.error(e);
       setFolders([]);
       setFiles([]);
-      setActivities([]);
     } finally {
       setLoading(false);
     }
@@ -114,19 +110,19 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   useEffect(() => {
     const fetchBreadcrumbs = async () => {
       if (!folderId) {
-        setBreadcrumbs([{ id: null, name: "Root" }]);
+        setBreadcrumbs([{ id: null, name: "My Workspace" }]);
         return;
       }
       try {
         const chain: any[] = await fetchApi(`/api/v1/folders/${folderId}/breadcrumb/`);
         const formattedChain: BreadcrumbItem[] = [
-          { id: null, name: "Root" },
+          { id: null, name: "My Workspace" },
           ...chain.map((item: any) => ({ id: item.id, name: item.name }))
         ];
         setBreadcrumbs(formattedChain);
       } catch (err) {
         console.error("Failed to load breadcrumbs:", err);
-        setBreadcrumbs([{ id: null, name: "Root" }]);
+        setBreadcrumbs([{ id: null, name: "My Workspace" }]);
       }
     };
 
@@ -137,7 +133,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
 
   // Desktop Keyboard Shortcuts Listener
   const handleExplorerKeyDown = useCallback((e: KeyboardEvent) => {
-    // Esc: close dialogs
     if (e.key === "Escape") {
       setPropertiesItem(null);
       setPreviewFile(null);
@@ -145,19 +140,16 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
       setPendingFile(null);
       return;
     }
-    // Ctrl+Shift+N: New folder
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "n") {
       e.preventDefault();
       setIsFolderDialogOpen(true);
       return;
     }
-    // Ctrl+U: Upload file
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "u") {
       e.preventDefault();
       fileInputRef.current?.click();
       return;
     }
-    // Backspace: Navigate to parent folder
     if (e.key === "Backspace" && document.activeElement?.tagName !== "INPUT") {
       if (breadcrumbs.length > 1) {
         const prevId = breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].id : null;
@@ -197,7 +189,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Pre-flight duplicate check & simulation
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -303,7 +294,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Soft Delete with 8-second Undo Toast
   const handleDeleteFile = async (fileItem: any) => {
     try {
       await fetchApi(`/api/v1/files/${fileItem.id}/`, { method: "DELETE" });
@@ -425,7 +415,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Bulk Action Helpers
   const handleBulkDelete = async () => {
     if (!confirm(`Move ${selectedFileIds.length} files to trash?`)) return;
     try {
@@ -467,13 +456,25 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   };
 
   const formatSize = (bytes: number) => {
-    if (!bytes || bytes === 0) return "0 B";
+    if (!bytes || bytes === 0) return "—";
     const kb = bytes / 1024;
     if (kb < 1024) return `${kb.toFixed(1)} KB`;
     const mb = kb / 1024;
     if (mb < 1024) return `${mb.toFixed(1)} MB`;
     const gb = mb / 1024;
     return `${gb.toFixed(2)} GB`;
+  };
+
+  // Google Drive Style Icon Mapping (20-22px)
+  const getFileIcon = (file: any) => {
+    const mime = file.mime_type?.toLowerCase() || "";
+    const name = file.name?.toLowerCase() || "";
+    if (mime.includes("pdf") || name.endsWith(".pdf")) return <FileText className="w-5 h-5 text-red-500 shrink-0" />;
+    if (mime.includes("image") || name.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) return <ImageIcon className="w-5 h-5 text-emerald-500 shrink-0" />;
+    if (mime.includes("video") || name.match(/\.(mp4|mov|avi|mkv)$/)) return <VideoIcon className="w-5 h-5 text-indigo-500 shrink-0" />;
+    if (mime.includes("sheet") || mime.includes("excel") || name.match(/\.(xlsx|xls|csv)$/)) return <FileSpreadsheet className="w-5 h-5 text-green-600 shrink-0" />;
+    if (mime.includes("document") || mime.includes("word") || name.match(/\.(docx|doc|txt)$/)) return <FileText className="w-5 h-5 text-blue-500 shrink-0" />;
+    return <GenericFileIcon className="w-5 h-5 text-slate-400 shrink-0" />;
   };
 
   const visibleFolders = folders.filter(f => {
@@ -487,7 +488,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   });
 
   const totalDrives = stats?.connected_drives || 0;
-  const currentFolderName = breadcrumbs[breadcrumbs.length - 1]?.name || "Root";
+  const currentFolderName = breadcrumbs[breadcrumbs.length - 1]?.name || "My Workspace";
 
   if (loading) {
     return (
@@ -500,7 +501,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   if (totalDrives === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mx-auto shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mx-auto shadow-xs">
           <HardDrive className="w-8 h-8 text-slate-400" />
         </div>
         <div className="max-w-md space-y-2">
@@ -509,7 +510,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
             {BRAND.name} pools multiple cloud accounts into one virtual workspace. Connect your first Google Drive account to activate the explorer.
           </p>
         </div>
-        <Button onClick={() => router.push("/dashboard/storage")} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-sm transition-all">
+        <Button onClick={() => router.push("/dashboard/storage")} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-xs transition-all">
           Connect Storage Provider
         </Button>
       </div>
@@ -517,14 +518,14 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      {/* Hierarchy Step 2: Synchronized Breadcrumb Bar */}
-      <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
-        <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap text-xs">
+    <div className="flex-1 overflow-auto p-6 space-y-4">
+      {/* 1. Synchronized Breadcrumb Navigation Bar */}
+      <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+        <div className="flex items-center gap-1 text-xs">
           {breadcrumbs.map((item, index) => {
             const isLast = index === breadcrumbs.length - 1;
             return (
-              <div key={item.id ?? "root"} className="flex items-center gap-2 shrink-0">
+              <div key={item.id ?? "root"} className="flex items-center gap-1 shrink-0">
                 {index > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
                 {isLast ? (
                   <span className="text-slate-900 font-bold bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
@@ -549,7 +550,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
           <button
             onClick={() => setViewMode("list")}
             className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-400 hover:text-slate-700"}`}
-            title="List View"
+            title="List View (Google Drive Standard)"
           >
             <LayoutList className="w-4 h-4" />
           </button>
@@ -563,8 +564,8 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         </div>
       </div>
 
-      {/* Hierarchy Step 3: Command Toolbar */}
-      <header className="flex items-center justify-between gap-4 flex-wrap">
+      {/* 2. Action Toolbar */}
+      <header className="flex items-center justify-between gap-4 flex-wrap pb-2">
         <div className="flex items-center gap-3">
           {folderId && (
             <Button size="icon" variant="outline" className="h-9 w-9 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100" onClick={() => {
@@ -575,7 +576,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
             </Button>
           )}
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
               {folderId ? currentFolderName : "My Workspace"}
             </h2>
             <p className="text-xs text-slate-400">
@@ -648,186 +649,190 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         </div>
       </header>
 
-      {/* Hierarchy Step 4: Folders First Section */}
-      {visibleFolders.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Folders</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {visibleFolders.map(folder => (
-              <Card
-                key={folder.id}
-                onClick={() => handleNavigate(folder.id)}
-                className="bg-white border-slate-200 p-3.5 flex items-center justify-between hover:border-blue-300 hover:bg-slate-50/50 transition-all cursor-pointer group shadow-2xs rounded-xl"
-              >
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <FolderIcon className="w-6 h-6 text-blue-600 shrink-0" />
-                  <span className="font-semibold text-xs text-slate-900 truncate">{folder.name}</span>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                      <MoreVertical className="w-3.5 h-3.5" />
-                    </Button>
-                  } />
-                  <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700 text-xs rounded-xl">
-                    <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); setPropertiesItem(folder); }}>
-                      <Eye className="w-3.5 h-3.5 mr-2" /> Properties
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDownloadFolderZip(folder); }}>
-                      <Download className="w-3.5 h-3.5 mr-2" /> Download ZIP
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); setRenamingItem({ type: "folder", id: folder.id, name: folder.name }); setRenameValue(folder.name); }}>
-                      <Edit2 className="w-3.5 h-3.5 mr-2" /> Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={(e) => { e.stopPropagation(); setMoveCopyTarget({ mode: "move_folder", item: folder }); }}>
-                      <Move className="w-3.5 h-3.5 mr-2" /> Move
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600 hover:bg-red-50 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }}>
-                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to Trash
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Hierarchy Step 5: Files Second Section */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-          Files {folderId ? `in "${currentFolderName}"` : ""}
-        </h3>
-
-        {visibleFiles.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 border-dashed">
-            <UploadCloud className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-sm font-bold text-slate-800">No files in this location</h3>
-            <p className="text-slate-400 text-xs mt-1">Upload files to store them inside {BRAND.name}.</p>
-          </div>
-        ) : viewMode === "list" ? (
-          /* LIST VIEW TABLE */
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-50/50">
-                  <th className="p-3 w-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedFileIds.length === visibleFiles.length && visibleFiles.length > 0}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedFileIds(visibleFiles.map(f => f.id));
-                        else setSelectedFileIds([]);
-                      }}
-                      className="accent-blue-600 cursor-pointer"
-                    />
-                  </th>
-                  <th className="p-3 font-bold">Name</th>
-                  <th className="p-3 font-bold">Size</th>
-                  <th className="p-3 font-bold">Storage Drive</th>
-                  <th className="p-3 font-bold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {visibleFiles.map(file => {
-                  const isSelected = selectedFileIds.includes(file.id);
-                  return (
-                    <tr key={file.id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? "bg-blue-50/60" : ""}`}>
-                      <td className="p-3">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedFileIds([...selectedFileIds, file.id]);
-                            else setSelectedFileIds(selectedFileIds.filter(id => id !== file.id));
-                          }}
-                          className="accent-blue-600 cursor-pointer"
-                        />
-                      </td>
-                      <td className="p-3 flex items-center gap-2.5">
-                        <Star
-                          onClick={() => handleToggleFavorite(file.id)}
-                          className={`w-3.5 h-3.5 cursor-pointer transition-colors ${file.is_favorite ? "text-amber-500 fill-amber-500" : "text-slate-300 hover:text-amber-500"}`}
-                        />
-                        <FileIcon className="w-4 h-4 text-purple-600 shrink-0" />
-                        <span className="font-semibold text-slate-900 truncate max-w-xs">{file.name}</span>
-                      </td>
-                      <td className="p-3 text-slate-500 font-mono text-[11px]">{formatSize(file.size)}</td>
-                      <td className="p-3 text-slate-500 truncate max-w-[120px]">{file.storage_account?.nickname || 'Google Drive'}</td>
-                      <td className="p-3 text-right flex justify-end gap-1.5">
-                        <Button size="sm" variant="ghost" onClick={() => setPreviewFile(file)} className="h-7 text-xs text-slate-600 hover:text-slate-900">
-                          <Eye className="w-3.5 h-3.5 mr-1 text-slate-400" /> Preview
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs text-slate-600 hover:text-slate-900"
-                          disabled={downloadingId === file.id}
-                          onClick={() => handleDownloadFile(file)}
-                        >
-                          <Download className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                          {downloadingId === file.id ? "Downloading..." : "Download"}
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger render={
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400">
-                              <MoreVertical className="w-3.5 h-3.5" />
-                            </Button>
-                          } />
-                          <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700 text-xs rounded-xl">
-                            <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setPropertiesItem(file)}>
-                              <Eye className="w-3.5 h-3.5 mr-2" /> Properties
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => { setRenamingItem({ type: "file", id: file.id, name: file.name }); setRenameValue(file.name); }}>
-                              <Edit2 className="w-3.5 h-3.5 mr-2" /> Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "move_file", item: file })}>
-                              <Move className="w-3.5 h-3.5 mr-2" /> Move
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "copy_file", item: file })}>
-                              <Copy className="w-3.5 h-3.5 mr-2" /> Copy
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => handleDeleteFile(file)}>
-                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to Trash
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          /* GRID VIEW CARDS */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {visibleFiles.map(file => (
-              <Card key={file.id} className="bg-white border-slate-200 p-4 space-y-3 hover:border-blue-300 transition-all shadow-2xs rounded-xl">
-                <div className="flex justify-between items-start">
-                  <FileIcon className="w-8 h-8 text-purple-600" />
-                  <Star
-                    onClick={() => handleToggleFavorite(file.id)}
-                    className={`w-4 h-4 cursor-pointer transition-colors ${file.is_favorite ? "text-amber-500 fill-amber-500" : "text-slate-300 hover:text-amber-500"}`}
+      {/* 3. Unified Google Drive-Style Explorer Table (Row Height 48px, Hover #F8FAFC, Selected #E8F0FE) */}
+      {visibleFolders.length === 0 && visibleFiles.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 border-dashed">
+          <UploadCloud className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-slate-800">No files or folders in this location</h3>
+          <p className="text-slate-400 text-xs mt-1">Upload files or create folders to organize your unified workspace.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+          <table className="w-full text-left border-collapse select-none">
+            <thead>
+              <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/60 h-10">
+                <th className="pl-4 pr-2 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedFileIds.length === visibleFiles.length && visibleFiles.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedFileIds(visibleFiles.map(f => f.id));
+                      else setSelectedFileIds([]);
+                    }}
+                    className="accent-blue-600 cursor-pointer rounded"
                   />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-xs text-slate-900 truncate">{file.name}</h4>
-                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">{formatSize(file.size)}</p>
-                </div>
-                <div className="flex gap-1.5 pt-1">
-                  <Button size="sm" variant="outline" onClick={() => setPreviewFile(file)} className="flex-1 text-[11px] h-7 border-slate-200 text-slate-700">
-                    Preview
-                  </Button>
-                  <Button size="sm" onClick={() => handleDownloadFile(file)} className="flex-1 text-[11px] h-7 bg-blue-600 text-white">
-                    Download
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
+                </th>
+                <th className="px-3">Name</th>
+                <th className="px-3 w-28">Owner</th>
+                <th className="px-3 w-36">Last Modified</th>
+                <th className="px-3 w-28 font-mono">File Size</th>
+                <th className="px-3 w-36">Storage Drive</th>
+                <th className="pr-4 text-right w-20">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {/* FOLDERS LIST FIRST (Drive Row Height 48px = h-12) */}
+              {visibleFolders.map((folder) => {
+                const isSelected = selectedFolderIds.includes(folder.id);
+                return (
+                  <tr
+                    key={`folder-${folder.id}`}
+                    onClick={() => {
+                      if (isSelected) setSelectedFolderIds(selectedFolderIds.filter(id => id !== folder.id));
+                      else setSelectedFolderIds([...selectedFolderIds, folder.id]);
+                    }}
+                    onDoubleClick={() => handleNavigate(folder.id)}
+                    className={`h-12 transition-colors cursor-pointer ${
+                      isSelected ? "bg-[#E8F0FE]" : "hover:bg-[#F8FAFC]"
+                    }`}
+                  >
+                    <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedFolderIds([...selectedFolderIds, folder.id]);
+                          else setSelectedFolderIds(selectedFolderIds.filter(id => id !== folder.id));
+                        }}
+                        className="accent-blue-600 cursor-pointer rounded"
+                      />
+                    </td>
+                    <td className="px-3">
+                      <div className="flex items-center gap-3">
+                        <FolderIcon className="w-5 h-5 text-blue-600 shrink-0" />
+                        <span className="font-bold text-slate-900 truncate max-w-sm">{folder.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 text-slate-500 font-medium">Me</td>
+                    <td className="px-3 text-slate-500 font-mono text-[11px]">
+                      {new Date(folder.created_at || Date.now()).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 text-slate-400 font-mono text-[11px]">—</td>
+                    <td className="px-3 text-slate-500 font-medium">Conflux Workspace</td>
+                    <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-900">
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </Button>
+                        } />
+                        <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700 text-xs rounded-xl">
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => handleNavigate(folder.id)}>
+                            <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" /> Open
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setPropertiesItem(folder)}>
+                            <Eye className="w-3.5 h-3.5 mr-2" /> Properties
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => handleDownloadFolderZip(folder)}>
+                            <Download className="w-3.5 h-3.5 mr-2" /> Download ZIP
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => { setRenamingItem({ type: "folder", id: folder.id, name: folder.name }); setRenameValue(folder.name); }}>
+                            <Edit2 className="w-3.5 h-3.5 mr-2" /> Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "move_folder", item: folder })}>
+                            <Move className="w-3.5 h-3.5 mr-2" /> Move
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => handleDeleteFolder(folder)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to Trash
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {/* FILES LIST SECOND (Drive Row Height 48px = h-12) */}
+              {visibleFiles.map((file) => {
+                const isSelected = selectedFileIds.includes(file.id);
+                return (
+                  <tr
+                    key={`file-${file.id}`}
+                    onClick={() => {
+                      if (isSelected) setSelectedFileIds(selectedFileIds.filter(id => id !== file.id));
+                      else setSelectedFileIds([...selectedFileIds, file.id]);
+                    }}
+                    onDoubleClick={() => setPreviewFile(file)}
+                    className={`h-12 transition-colors cursor-pointer ${
+                      isSelected ? "bg-[#E8F0FE]" : "hover:bg-[#F8FAFC]"
+                    }`}
+                  >
+                    <td className="pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedFileIds([...selectedFileIds, file.id]);
+                          else setSelectedFileIds(selectedFileIds.filter(id => id !== file.id));
+                        }}
+                        className="accent-blue-600 cursor-pointer rounded"
+                      />
+                    </td>
+                    <td className="px-3">
+                      <div className="flex items-center gap-3">
+                        <Star
+                          onClick={(e) => { e.stopPropagation(); handleToggleFavorite(file.id); }}
+                          className={`w-3.5 h-3.5 cursor-pointer transition-colors shrink-0 ${file.is_favorite ? "text-amber-500 fill-amber-500" : "text-slate-300 hover:text-amber-500"}`}
+                        />
+                        {getFileIcon(file)}
+                        <span className="font-semibold text-slate-900 truncate max-w-sm">{file.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 text-slate-500 font-medium">Me</td>
+                    <td className="px-3 text-slate-500 font-mono text-[11px]">
+                      {new Date(file.updated_at || file.created_at || Date.now()).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 text-slate-600 font-mono text-[11px]">{formatSize(file.size)}</td>
+                    <td className="px-3 text-slate-500 truncate max-w-[130px] font-medium">{file.storage_account?.nickname || 'Google Drive'}</td>
+                    <td className="pr-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-900">
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </Button>
+                        } />
+                        <DropdownMenuContent align="end" className="bg-white border-slate-200 text-slate-700 text-xs rounded-xl">
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setPreviewFile(file)}>
+                            <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" /> Preview
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => handleDownloadFile(file)}>
+                            <Download className="w-3.5 h-3.5 mr-2" /> Download
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setPropertiesItem(file)}>
+                            <Eye className="w-3.5 h-3.5 mr-2" /> Properties
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => { setRenamingItem({ type: "file", id: file.id, name: file.name }); setRenameValue(file.name); }}>
+                            <Edit2 className="w-3.5 h-3.5 mr-2" /> Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "move_file", item: file })}>
+                            <Move className="w-3.5 h-3.5 mr-2" /> Move
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="hover:bg-slate-100 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "copy_file", item: file })}>
+                            <Copy className="w-3.5 h-3.5 mr-2" /> Copy
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600 hover:bg-red-50 cursor-pointer" onClick={() => handleDeleteFile(file)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Move to Trash
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Properties Drawer */}
       <PropertiesPanel
