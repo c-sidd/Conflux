@@ -92,12 +92,15 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         fetchApi("/api/v1/files/"),
         fetchApi("/api/v1/storage/activities/"),
       ]);
-      setStats(statsData);
-      setFolders(foldersData);
-      setFiles(filesData);
-      setActivities(activitiesData);
+      setStats(statsData?.data || statsData);
+      setFolders(Array.isArray(foldersData) ? foldersData : (foldersData?.data || []));
+      setFiles(Array.isArray(filesData) ? filesData : (filesData?.data || []));
+      setActivities(Array.isArray(activitiesData) ? activitiesData : (activitiesData?.data || []));
     } catch (e) {
       console.error(e);
+      setFolders([]);
+      setFiles([]);
+      setActivities([]);
     } finally {
       setLoading(false);
     }

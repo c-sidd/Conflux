@@ -16,9 +16,19 @@ export default function RecentPage() {
   const loadRecent = async () => {
     try {
       const data = await fetchApi("/api/v1/recent/");
-      setRecentFiles(data);
+      const items = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.all_files)
+        ? data.all_files
+        : Array.isArray(data?.data?.all_files)
+        ? data.data.all_files
+        : Array.isArray(data?.files)
+        ? data.files
+        : [];
+      setRecentFiles(items);
     } catch (e) {
       console.error(e);
+      setRecentFiles([]);
     } finally {
       setLoading(false);
     }

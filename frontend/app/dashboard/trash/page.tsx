@@ -13,9 +13,15 @@ export default function TrashPage() {
   const loadTrash = async () => {
     try {
       const data = await fetchApi("/api/v1/trash/");
-      setTrashedItems(data);
+      const raw = data?.data || data || {};
+      setTrashedItems({
+        files: Array.isArray(raw.files) ? raw.files : [],
+        folders: Array.isArray(raw.folders) ? raw.folders : [],
+        total_items: raw.total_items || (raw.files?.length || 0) + (raw.folders?.length || 0)
+      });
     } catch (e) {
       console.error(e);
+      setTrashedItems({ files: [], folders: [], total_items: 0 });
     } finally {
       setLoading(false);
     }

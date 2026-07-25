@@ -14,10 +14,12 @@ export default function FavoritesPage() {
 
   const loadFavorites = async () => {
     try {
-      const files: any[] = await fetchApi("/api/v1/files/");
-      setFavoriteFiles(files.filter((f: any) => f.is_favorite && !f.is_trashed));
+      const data: any = await fetchApi("/api/v1/files/");
+      const filesList: any[] = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+      setFavoriteFiles(filesList.filter((f: any) => f.is_favorite && !f.is_trashed));
     } catch (e) {
       console.error(e);
+      setFavoriteFiles([]);
     } finally {
       setLoading(false);
     }
