@@ -62,6 +62,8 @@ export default function DashboardLayout({
     { label: "Favorites", href: "/dashboard/favorites", icon: Star, color: "text-amber-400" },
     { label: "Storage Accounts", href: "/dashboard/storage", icon: HardDrive, color: "text-emerald-400" },
     { label: "Insights", href: "/dashboard/insights", icon: Settings, color: "text-cyan-400" },
+    { label: "Activity", href: "/dashboard/activity", icon: Clock, color: "text-blue-400" },
+    { label: "Settings", href: "/dashboard/settings", icon: Settings, color: "text-zinc-400" },
     { label: "Trash", href: "/dashboard/trash", icon: Trash2, color: "text-red-400" },
   ];
 

@@ -180,3 +180,17 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Feature Flags Configuration
+FEATURE_FLAGS = {
+    'FEATURE_TRASH': True,
+    'FEATURE_PREVIEW': True,
+    'FEATURE_SEARCH': True,
+    'FEATURE_FAVORITES': True,
+    'FEATURE_RECENT': True,
+    'FEATURE_DIAGNOSTICS': True,
+    'FEATURE_DROPBOX': False,  # Reserved for Version 2.0
+    'FEATURE_S3': False,       # Reserved for Version 2.0
+    'FEATURE_CHUNK_UPLOAD': False, # Reserved for Version 3.0
+}
+

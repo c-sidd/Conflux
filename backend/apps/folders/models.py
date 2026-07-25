@@ -6,6 +6,15 @@ class Folder(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='folders')
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subfolders')
     
+    VISIBILITY_CHOICES = (
+        ('private', 'Private'),
+        ('shared', 'Shared'),
+        ('public', 'Public'),
+        ('team', 'Team'),
+    )
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='created_folders')
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default='private')
     is_trashed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
