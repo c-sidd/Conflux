@@ -876,11 +876,11 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         </DialogContent>
       </Dialog>
 
-      {/* Undo Toast Notification (8-second Window) */}
+      {/* Undo Toast Notification (8-second Window, Bottom-Right Desktop 24px) */}
       {undoToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white rounded-2xl px-4 py-2.5 shadow-xl flex items-center gap-3 text-xs animate-in slide-in-from-bottom duration-200">
-          <span>Moved <strong>{undoToast.name}</strong> to trash.</span>
-          <Button size="sm" onClick={handleUndo} className="bg-blue-600 hover:bg-blue-500 text-white h-7 text-xs font-semibold px-3">
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-xl flex items-center justify-between gap-4 text-xs animate-in slide-in-from-bottom-2 fade-in duration-180 max-w-sm border border-slate-800">
+          <span className="truncate max-w-[200px]">Moved <strong className="text-white">{undoToast.name}</strong> to trash.</span>
+          <Button size="sm" onClick={handleUndo} className="bg-blue-600 hover:bg-blue-500 text-white h-7 text-xs font-semibold px-3 shrink-0">
             <RotateCcw className="w-3.5 h-3.5 mr-1" /> Undo
           </Button>
         </div>

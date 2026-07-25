@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api";
 import { Card } from "@/components/ui/card";
-import { PieChart, ShieldAlert, CheckCircle, BarChart3, TrendingUp, Info } from "lucide-react";
+import { PieChart, CheckCircle, BarChart3, TrendingUp, Info } from "lucide-react";
+import { BRAND } from "@/lib/brand";
 
 export default function StorageInsights() {
   const [stats, setStats] = useState<any>(null);
@@ -11,7 +12,7 @@ export default function StorageInsights() {
 
   const loadInsights = async () => {
     try {
-      const data = await fetchApi("/api/dashboard/stats/");
+      const data = await fetchApi("/api/v1/dashboard/stats/");
       setStats(data);
     } catch (e) {
       console.error("Failed to load insights", e);
@@ -34,8 +35,8 @@ export default function StorageInsights() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-zinc-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex-1 flex items-center justify-center bg-[#FCFCFD]">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -44,13 +45,11 @@ export default function StorageInsights() {
   const insights = stats?.insights || [];
   const totalUsed = stats?.used_storage || 0;
 
-  // Calculate recommendation
   const getRecommendation = () => {
     if (drives.length < 2) return "Connect at least two storage drives to unlock balancing recommendations.";
     const unhealthy = drives.filter((d: any) => d.health !== 'healthy');
     if (unhealthy.length > 0) return `Caution: ${unhealthy.length} storage account needs health attention. Test connection.`;
     
-    // Find highest & lowest utilization
     const driveUtils = drives.map((d: any) => ({
       name: d.nickname,
       usedPct: d.total > 0 ? (d.used / d.total * 100) : 0
@@ -61,39 +60,41 @@ export default function StorageInsights() {
     if (maxUtil - minUtil > 30) {
       const highest = driveUtils.find((d: any) => d.usedPct === maxUtil);
       const lowest = driveUtils.find((d: any) => d.usedPct === minUtil);
-      return `Suggestion: Storage utilization mismatch detected. Drive '${highest?.name}' (${maxUtil.toFixed(0)}% used) is significantly more utilized than '${lowest?.name}' (${minUtil.toFixed(0)}% used). Upload rules can help balance future file distribution.`;
+      return `Suggestion: Storage utilization mismatch detected. Drive '${highest?.name}' (${maxUtil.toFixed(0)}% used) is significantly more utilized than '${lowest?.name}' (${minUtil.toFixed(0)}% used). Upload rules will balance future file distribution.`;
     }
 
-    return "Status: DCS Storage pool is perfectly balanced. File distribution is operating optimally.";
+    return `Status: ${BRAND.name} Storage pool is balanced. File distribution is operating optimally.`;
   };
 
   return (
-    <div className="flex-1 overflow-auto p-8 z-10">
-      <header className="mb-8">
-        <h2 className="text-3xl font-bold text-white">Storage Insights</h2>
-        <p className="text-zinc-400 text-sm mt-1">Deep analytics on your unified storage pool and contents</p>
+    <div className="flex-1 overflow-auto p-6 space-y-6">
+      <header className="border-b border-slate-200/80 pb-4">
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+          <PieChart className="w-6 h-6 text-blue-600" /> Storage Insights & Analytics
+        </h2>
+        <p className="text-xs text-slate-500 mt-1">Deep analytics on your unified storage pool and category breakdown.</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* File Type Distribution */}
-        <Card className="lg:col-span-2 bg-zinc-900/50 backdrop-blur border-zinc-800 p-6 flex flex-col justify-between">
+        <Card className="lg:col-span-2 bg-white border-slate-200 p-6 flex flex-col justify-between rounded-2xl shadow-2xs">
           <div>
-            <div className="flex items-center gap-3 mb-6">
-              <PieChart className="w-5 h-5 text-blue-400" />
-              <h3 className="text-lg font-bold text-white">Consumption by File Category</h3>
+            <div className="flex items-center gap-2.5 mb-6 border-b border-slate-100 pb-3">
+              <PieChart className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-900">Consumption by File Category</h3>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-5">
               {insights.map((item: any) => {
                 const percentage = totalUsed > 0 ? (item.size / totalUsed * 100) : 0;
                 return (
-                  <div key={item.category} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-semibold text-zinc-300">{item.category}</span>
-                      <span className="text-zinc-400">{formatSize(item.size)} ({percentage.toFixed(1)}%)</span>
+                  <div key={item.category} className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-semibold">
+                      <span className="text-slate-800">{item.category}</span>
+                      <span className="text-slate-500 font-mono text-[11px]">{formatSize(item.size)} ({percentage.toFixed(1)}%)</span>
                     </div>
-                    <div className="w-full bg-zinc-950 rounded-full h-2.5 overflow-hidden">
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
                       <div 
-                        className={`h-full rounded-full bg-blue-500`}
+                        className="h-full rounded-full bg-blue-600"
                         style={{ width: `${percentage}%` }}
                       ></div>
                     </div>
@@ -104,33 +105,33 @@ export default function StorageInsights() {
           </div>
         </Card>
 
-        {/* AI Recommendations */}
-        <Card className="bg-zinc-900/50 backdrop-blur border-zinc-800 p-6 flex flex-col justify-between">
+        {/* Storage Pool Health */}
+        <Card className="bg-white border-slate-200 p-6 flex flex-col justify-between rounded-2xl shadow-2xs">
           <div>
-            <div className="flex items-center gap-3 mb-6">
-              <TrendingUp className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-bold text-white">DCS Storage Health</h3>
+            <div className="flex items-center gap-2.5 mb-6 border-b border-slate-100 pb-3">
+              <TrendingUp className="w-4 h-4 text-purple-600" />
+              <h3 className="text-sm font-bold text-slate-900">{BRAND.name} Storage Health</h3>
             </div>
             
-            <div className="space-y-6">
-              <div className="p-4 bg-zinc-950 rounded-xl border border-zinc-800 flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-                <p className="text-zinc-300 text-sm leading-relaxed">{getRecommendation()}</p>
+            <div className="space-y-5 text-xs">
+              <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="text-blue-900 leading-relaxed font-medium">{getRecommendation()}</p>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-zinc-400">Total Storage Pool:</span>
-                  <span className="text-white font-bold">{formatSize(stats?.total_storage)}</span>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <span className="text-slate-500">Total Storage Pool:</span>
+                  <span className="text-slate-900 font-bold font-mono">{formatSize(stats?.total_storage)}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-zinc-400">Active Storage Drives:</span>
-                  <span className="text-white font-bold">{drives.length} Connected</span>
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <span className="text-slate-500">Active Storage Drives:</span>
+                  <span className="text-slate-900 font-bold">{drives.length} Connected</span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-zinc-400">Overall Drive Health:</span>
-                  <span className="text-white font-bold flex items-center gap-1 text-green-400">
-                    <CheckCircle className="w-4 h-4" /> Healthy
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Overall Pool Health:</span>
+                  <span className="text-green-700 font-bold flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> Healthy
                   </span>
                 </div>
               </div>
@@ -138,27 +139,27 @@ export default function StorageInsights() {
           </div>
         </Card>
 
-        {/* Storage Distribution Chart */}
-        <Card className="lg:col-span-3 bg-zinc-900/50 backdrop-blur border-zinc-800 p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <BarChart3 className="w-5 h-5 text-purple-400" />
-            <h3 className="text-lg font-bold text-white">Disk Space Utilization Distribution</h3>
+        {/* Disk Space Distribution */}
+        <Card className="lg:col-span-3 bg-white border-slate-200 p-6 rounded-2xl shadow-2xs">
+          <div className="flex items-center gap-2.5 mb-6 border-b border-slate-100 pb-3">
+            <BarChart3 className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-sm font-bold text-slate-900">Disk Space Utilization Distribution</h3>
           </div>
           
-          <div className="space-y-6">
+          <div className="space-y-5">
             {drives.map((d: any) => (
-              <div key={d.id} className="space-y-2">
-                <div className="flex justify-between text-sm">
+              <div key={d.id} className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-zinc-300">{d.nickname}</span>
-                    <span className="text-zinc-500 text-xs">({d.email})</span>
+                    <span className="text-slate-900">{d.nickname}</span>
+                    <span className="text-slate-400 text-[11px]">({d.email})</span>
                   </div>
-                  <span className="text-zinc-400">{formatSize(d.used)} of {formatSize(d.total)} used ({d.percentage}%)</span>
+                  <span className="text-slate-500 font-mono text-[11px]">{formatSize(d.used)} of {formatSize(d.total)} used ({d.percentage}%)</span>
                 </div>
-                <div className="w-full bg-zinc-950 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/60">
                   <div 
                     className={`h-full rounded-full ${
-                      d.percentage > 90 ? 'bg-red-500' : d.percentage > 70 ? 'bg-amber-500' : 'bg-blue-500'
+                      d.percentage > 90 ? 'bg-red-600' : d.percentage > 70 ? 'bg-amber-500' : 'bg-blue-600'
                     }`}
                     style={{ width: `${d.percentage}%` }}
                   ></div>
