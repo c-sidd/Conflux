@@ -44,6 +44,7 @@ class StorageAccount(models.Model):
     last_sync = models.DateTimeField(auto_now=True)
     
     is_active = models.BooleanField(default=True)
+    deactivated_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -115,7 +116,13 @@ class StorageAccount(models.Model):
 class ActivityLog(models.Model):
     ACTION_CHOICES = (
         ('upload', 'File Uploaded'),
-        ('delete', 'File Deleted'),
+        ('download', 'File Downloaded'),
+        ('rename', 'Item Renamed'),
+        ('move', 'Item Moved'),
+        ('copy', 'Item Copied'),
+        ('delete', 'Item Soft Deleted'),
+        ('restore', 'Item Restored'),
+        ('permanent_delete', 'Item Permanently Deleted'),
         ('connect', 'Drive Connected'),
         ('disconnect', 'Drive Disconnected'),
         ('sync', 'Quota Refreshed'),
@@ -123,6 +130,10 @@ class ActivityLog(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='activity_logs')
     action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    old_path = models.CharField(max_length=1024, blank=True, null=True)
+    new_path = models.CharField(max_length=1024, blank=True, null=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
     details = models.JSONField(default=dict)
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -131,3 +142,4 @@ class ActivityLog(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.action} - {self.timestamp}"
+

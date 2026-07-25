@@ -39,3 +39,25 @@ class StorageProvider(ABC):
         Deletes a file from the provider.
         """
         pass
+
+    @abstractmethod
+    def rename_object(self, provider_file_id: str, new_name: str) -> bool:
+        """
+        Renames a file or folder on the provider.
+        """
+        pass
+
+    @abstractmethod
+    def move_object(self, provider_file_id: str, previous_parent_id: str, new_parent_id: str) -> bool:
+        """
+        Moves a file or folder on the provider to a new parent folder.
+        """
+        pass
+
+    @abstractmethod
+    def copy_file(self, provider_file_id: str, new_name: str, parent_id: str = None) -> Dict[str, Any]:
+        """
+        Copies a file on the provider.
+        """
+        pass
+

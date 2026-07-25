@@ -204,6 +204,80 @@ class StorageManager:
             )
         return success
     
+    def rename_file(self, account_id: int, provider_file_id: str, new_name: str) -> bool:
+        account = StorageAccount.objects.get(id=account_id, user=self.user)
+        provider = self._get_provider_instance(account)
+        return provider.rename_object(provider_file_id, new_name)
+
+    def rename_folder(self, folder_id: int, new_name: str) -> bool:
+        from apps.folders.models import StorageFolder
+        mappings = StorageFolder.objects.filter(folder_id=folder_id, folder__user=self.user)
+        success = True
+        for mapping in mappings:
+            try:
+                provider = self._get_provider_instance(mapping.storage_account)
+                renamed = provider.rename_object(mapping.provider_folder_id, new_name)
+                if not renamed:
+                    success = False
+            except Exception:
+                success = False
+        return success
+
+    def move_file(self, account_id: int, provider_file_id: str, target_folder_id: int = None) -> bool:
+        account = StorageAccount.objects.get(id=account_id, user=self.user)
+        provider = self._get_provider_instance(account)
+        target_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=target_folder_id)
+        return provider.move_object(provider_file_id, previous_parent_id=None, new_parent_id=target_provider_parent)
+
+    def copy_file(self, account_id: int, provider_file_id: str, new_name: str, target_folder_id: int = None) -> Dict[str, Any]:
+        account = StorageAccount.objects.get(id=account_id, user=self.user)
+        provider = self._get_provider_instance(account)
+        target_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=target_folder_id)
+        result = provider.copy_file(provider_file_id, new_name, parent_id=target_provider_parent)
+        
+        # Update local storage quota
+        account.used_storage += result.get('size', 0)
+        account.save()
+        
+        return {
+            'account_id': account.id,
+            'provider_file_id': result['provider_file_id'],
+            'size': result['size'],
+            'web_view_link': result['web_view_link']
+        }
+
+    def zip_folder_stream(self, folder_id: int):
+        import io
+        import zipfile
+        from apps.files.models import File
+        from apps.folders.models import Folder
+
+        zip_buffer = io.BytesIO()
+
+        def add_folder_to_zip(zip_file, f_id: int, current_path: str = ""):
+            folder_obj = Folder.objects.get(id=f_id, user=self.user)
+            folder_path = f"{current_path}{folder_obj.name}/" if current_path else f"{folder_obj.name}/"
+            
+            # Add files in current folder
+            folder_files = File.objects.filter(folder_id=f_id, user=self.user, is_trashed=False)
+            for fi in folder_files:
+                try:
+                    stream = self.download_file(fi.storage_account.id, fi.provider_file_id)
+                    zip_file.writestr(f"{folder_path}{fi.name}", stream.read())
+                except Exception as e:
+                    print(f"Error packing file {fi.name} into ZIP: {str(e)}")
+
+            # Add subfolders recursively
+            subfolders = Folder.objects.filter(parent_id=f_id, user=self.user, is_trashed=False)
+            for sf in subfolders:
+                add_folder_to_zip(zip_file, sf.id, folder_path)
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            add_folder_to_zip(zf, folder_id)
+
+        zip_buffer.seek(0)
+        return zip_buffer
+
     def refresh_quotas(self):
         accounts = StorageAccount.objects.filter(user=self.user, is_active=True)
         for account in accounts:
@@ -218,3 +292,4 @@ class StorageManager:
                 # Update status
                 account.health_status = 'offline'
                 account.save()
+

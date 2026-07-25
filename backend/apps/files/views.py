@@ -1,13 +1,16 @@
 import logging
+import io
+import zipfile
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.http import FileResponse
 from .models import File
 from .serializers import FileSerializer
 from apps.storage.manager import StorageManager
-from apps.storage.models import StorageAccount
+from apps.storage.models import StorageAccount, ActivityLog
 
 logger = logging.getLogger(__name__)
 
@@ -17,18 +20,15 @@ class FileViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return File.objects.filter(user=self.request.user)
+        qs = File.objects.filter(user=self.request.user)
+        include_trashed = self.request.query_params.get('include_trashed', 'false').lower() == 'true'
+        if not include_trashed:
+            qs = qs.filter(is_trashed=False)
+        return qs
 
     def create(self, request, *args, **kwargs):
-        print(f"\n================ [FILE UPLOAD REQUEST LOG] ================")
-        print(f"Request Content-Type: {request.content_type}")
-        print(f"Request FILES: {request.FILES}")
-        print(f"Request Data: {request.data}")
-        print(f"===========================================================\n")
-        
         uploaded_file = request.FILES.get('file')
         if not uploaded_file:
-            print("ERROR: No file provided in request.FILES under 'file' key.")
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
         folder_id = request.data.get('folder')
@@ -41,7 +41,6 @@ class FileViewSet(viewsets.ModelViewSet):
         manager = StorageManager(user=request.user)
         
         try:
-            print(f"Uploading file '{uploaded_file.name}' ({uploaded_file.size} bytes, mime: {uploaded_file.content_type}, folder: {folder_id})...")
             upload_result = manager.upload_file(
                 file_obj=uploaded_file.file,
                 filename=uploaded_file.name,
@@ -49,7 +48,6 @@ class FileViewSet(viewsets.ModelViewSet):
                 size=uploaded_file.size,
                 folder_id=folder_id
             )
-            print(f"Upload Result: {upload_result}")
             
             storage_account = StorageAccount.objects.get(id=upload_result['account_id'])
             
@@ -65,32 +63,222 @@ class FileViewSet(viewsets.ModelViewSet):
             )
             
             serializer = self.get_serializer(file_instance)
-            print(f"File model created successfully with ID: {file_instance.id}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            print(f"ERROR DURING FILE UPLOAD: {str(e)}")
+            logger.error(f"Error during file upload: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        new_name = request.data.get('name')
+        
+        if new_name and new_name != instance.name:
+            manager = StorageManager(user=request.user)
+            renamed = manager.rename_file(instance.storage_account.id, instance.provider_file_id, new_name)
+            if renamed:
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action='rename',
+                    old_path=instance.name,
+                    new_path=new_name,
+                    details={'file_id': instance.id, 'drive_nickname': instance.storage_account.nickname}
+                )
+        
+        return super().update(request, *args, **kwargs, partial=partial)
+
     def perform_destroy(self, instance):
-        manager = StorageManager(user=self.request.user)
-        manager.delete_file(
-            account_id=instance.storage_account.id, 
-            provider_file_id=instance.provider_file_id,
-            filename=instance.name,
-            size=instance.size
+        # Soft delete by default
+        instance.is_trashed = True
+        instance.save()
+        ActivityLog.objects.create(
+            user=self.request.user,
+            action='delete',
+            details={'filename': instance.name, 'size': instance.size, 'file_id': instance.id}
         )
-        instance.delete()
+
+    @action(detail=True, methods=['post'], url_path='move')
+    def move(self, request, pk=None):
+        file_instance = self.get_object()
+        target_folder_id = request.data.get('folder_id')
+        if target_folder_id is not None:
+            try:
+                target_folder_id = int(target_folder_id)
+            except (ValueError, TypeError):
+                target_folder_id = None
+
+        manager = StorageManager(user=request.user)
+        moved_on_drive = manager.move_file(
+            account_id=file_instance.storage_account.id,
+            provider_file_id=file_instance.provider_file_id,
+            target_folder_id=target_folder_id
+        )
+
+        old_folder_name = file_instance.folder.name if file_instance.folder else "Root"
+        file_instance.folder_id = target_folder_id
+        file_instance.save()
+
+        ActivityLog.objects.create(
+            user=request.user,
+            action='move',
+            old_path=old_folder_name,
+            new_path=str(target_folder_id or "Root"),
+            details={'filename': file_instance.name, 'file_id': file_instance.id}
+        )
+
+        return Response({'message': 'File moved successfully', 'file': self.get_serializer(file_instance).data})
+
+    @action(detail=True, methods=['post'], url_path='copy')
+    def copy_file(self, request, pk=None):
+        file_instance = self.get_object()
+        target_folder_id = request.data.get('folder_id')
+        if target_folder_id is not None:
+            try:
+                target_folder_id = int(target_folder_id)
+            except (ValueError, TypeError):
+                target_folder_id = None
+
+        new_name = request.data.get('name', f"Copy of {file_instance.name}")
+        manager = StorageManager(user=request.user)
+
+        copy_result = manager.copy_file(
+            account_id=file_instance.storage_account.id,
+            provider_file_id=file_instance.provider_file_id,
+            new_name=new_name,
+            target_folder_id=target_folder_id
+        )
+
+        new_file = File.objects.create(
+            name=new_name,
+            user=request.user,
+            folder_id=target_folder_id,
+            storage_account=file_instance.storage_account,
+            provider_file_id=copy_result['provider_file_id'],
+            size=copy_result['size'],
+            mime_type=file_instance.mime_type,
+            web_view_link=copy_result['web_view_link']
+        )
+
+        ActivityLog.objects.create(
+            user=request.user,
+            action='copy',
+            details={'source_file': file_instance.name, 'new_file': new_file.name}
+        )
+
+        return Response({'message': 'File copied successfully', 'file': self.get_serializer(new_file).data}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='favorite')
+    def toggle_favorite(self, request, pk=None):
+        file_instance = self.get_object()
+        file_instance.is_favorite = not file_instance.is_favorite
+        file_instance.save()
+        return Response({'is_favorite': file_instance.is_favorite, 'message': 'Favorite status updated'})
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore(self, request, pk=None):
+        file_instance = File.objects.get(id=pk, user=request.user)
+        file_instance.is_trashed = False
+        file_instance.save()
+        ActivityLog.objects.create(
+            user=request.user,
+            action='restore',
+            details={'filename': file_instance.name, 'file_id': file_instance.id}
+        )
+        return Response({'message': 'File restored from trash', 'file': self.get_serializer(file_instance).data})
+
+    @action(detail=True, methods=['delete'], url_path='permanent-delete')
+    def permanent_delete(self, request, pk=None):
+        file_instance = File.objects.get(id=pk, user=request.user)
+        manager = StorageManager(user=request.user)
+        manager.delete_file(
+            account_id=file_instance.storage_account.id,
+            provider_file_id=file_instance.provider_file_id,
+            filename=file_instance.name,
+            size=file_instance.size
+        )
+        file_instance.delete()
+        ActivityLog.objects.create(
+            user=request.user,
+            action='permanent_delete',
+            details={'filename': file_instance.name}
+        )
+        return Response({'message': 'File permanently deleted'}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        file_ids = request.data.get('file_ids', [])
+        files = File.objects.filter(id__in=file_ids, user=request.user)
+        count = files.update(is_trashed=True)
+        return Response({'message': f'{count} files moved to trash'})
+
+    @action(detail=False, methods=['post'], url_path='bulk-move')
+    def bulk_move(self, request):
+        file_ids = request.data.get('file_ids', [])
+        target_folder_id = request.data.get('folder_id')
+        files = File.objects.filter(id__in=file_ids, user=request.user)
+        count = files.update(folder_id=target_folder_id)
+        return Response({'message': f'{count} files moved successfully'})
+
+    @action(detail=False, methods=['post'], url_path='bulk-download')
+    def bulk_download(self, request):
+        file_ids = request.data.get('file_ids', [])
+        files = File.objects.filter(id__in=file_ids, user=request.user)
+        if not files.exists():
+            return Response({'error': 'No files selected'}, status=status.HTTP_400_BAD_REQUEST)
+
+        manager = StorageManager(user=request.user)
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for fi in files:
+                try:
+                    stream = manager.download_file(fi.storage_account.id, fi.provider_file_id)
+                    zf.writestr(fi.name, stream.read())
+                except Exception as e:
+                    logger.error(f"Error zipping bulk download file {fi.name}: {str(e)}")
+
+        zip_buffer.seek(0)
+        response = FileResponse(zip_buffer, content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="DCS_Bulk_Download.zip"'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='check-duplicate')
+    def check_duplicate(self, request):
+        filename = request.data.get('name')
+        folder_id = request.data.get('folder_id')
+        size = request.data.get('size')
+
+        existing = File.objects.filter(
+            user=request.user,
+            name=filename,
+            folder_id=folder_id,
+            is_trashed=False
+        ).first()
+
+        if existing:
+            return Response({
+                'exists': True,
+                'file_id': existing.id,
+                'name': existing.name,
+                'size': existing.size
+            })
+
+        return Response({'exists': False})
 
     @action(detail=True, methods=['get'], url_path='download')
     def download(self, request, pk=None):
-        from django.http import FileResponse
         file_instance = self.get_object()
         manager = StorageManager(user=request.user)
         try:
             file_stream = manager.download_file(
                 account_id=file_instance.storage_account.id,
                 provider_file_id=file_instance.provider_file_id
+            )
+            ActivityLog.objects.create(
+                user=request.user,
+                action='download',
+                details={'filename': file_instance.name, 'file_id': file_instance.id}
             )
             response = FileResponse(file_stream, content_type=file_instance.mime_type or 'application/octet-stream')
             response['Content-Disposition'] = f'attachment; filename="{file_instance.name}"'
@@ -119,4 +307,3 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({'error': result.get('error')}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response(result, status=status.HTTP_200_OK)
-

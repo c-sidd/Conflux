@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { fetchApi } from "@/lib/api";
-import { Folder as FolderIcon, File as FileIcon, UploadCloud, Plus, MoreVertical, Trash2, HardDrive, Download, ChevronRight, Activity, ArrowLeft } from "lucide-react";
+import { 
+  Folder as FolderIcon, File as FileIcon, UploadCloud, Plus, MoreVertical, Trash2, 
+  HardDrive, Download, ChevronRight, Activity, ArrowLeft, Eye, Edit2, Move, Copy, Star, CheckSquare, Square, RotateCcw
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -20,14 +23,27 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
+import PropertiesPanel from "@/components/properties-panel";
+import FilePreviewModal from "@/components/file-preview-modal";
+import MoveCopyModal from "@/components/move-copy-modal";
 
 interface BreadcrumbItem {
   id: number | null;
   name: string;
 }
 
+interface UndoToast {
+  id: string;
+  name: string;
+  type: "file" | "folder";
+  itemId: number;
+  timerId: any;
+}
+
 export default function StorageExplorer({ folderId = null }: { folderId?: number | null }) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [stats, setStats] = useState<any>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
@@ -35,24 +51,42 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   const [loading, setLoading] = useState(true);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: null, name: "Root" }]);
   
-  // Modals
+  // Selection
+  const [selectedFileIds, setSelectedFileIds] = useState<number[]>([]);
+  const [selectedFolderIds, setSelectedFolderIds] = useState<number[]>([]);
+
+  // Properties & Previews
+  const [propertiesItem, setPropertiesItem] = useState<any | null>(null);
+  const [previewFile, setPreviewFile] = useState<any | null>(null);
+
+  // Move & Copy Modal State
+  const [moveCopyTarget, setMoveCopyTarget] = useState<{ mode: "move_file" | "copy_file" | "move_folder" | "bulk_move"; item?: any } | null>(null);
+
+  // Modals & Dialogs
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   
-  // Upload Pre-flight Simulation
+  // Inline Rename
+  const [renamingItem, setRenamingItem] = useState<{ type: "file" | "folder"; id: number; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  // Upload Simulation & Queue
   const [pendingFile, setPendingFile] = useState<any>(null);
   const [simulation, setSimulation] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
+  // Undo Toast Queue
+  const [undoToast, setUndoToast] = useState<UndoToast | null>(null);
+
   const loadData = async () => {
     try {
       const [statsData, foldersData, filesData, activitiesData] = await Promise.all([
-        fetchApi("/api/dashboard/stats/"),
-        fetchApi("/api/folders/"),
-        fetchApi("/api/files/"),
-        fetchApi("/api/storage/activities/"),
+        fetchApi("/api/v1/dashboard/stats/"),
+        fetchApi("/api/v1/folders/"),
+        fetchApi("/api/v1/files/"),
+        fetchApi("/api/v1/storage/activities/"),
       ]);
       setStats(statsData);
       setFolders(foldersData);
@@ -69,7 +103,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     loadData();
   }, []);
 
-  // Fetch breadcrumb chain when folderId changes
+  // Fetch breadcrumb chain
   useEffect(() => {
     const fetchBreadcrumbs = async () => {
       if (!folderId) {
@@ -77,7 +111,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         return;
       }
       try {
-        const chain: any[] = await fetchApi(`/api/folders/${folderId}/breadcrumb/`);
+        const chain: any[] = await fetchApi(`/api/v1/folders/${folderId}/breadcrumb/`);
         const formattedChain: BreadcrumbItem[] = [
           { id: null, name: "Root" },
           ...chain.map((item: any) => ({ id: item.id, name: item.name }))
@@ -90,6 +124,8 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     };
 
     fetchBreadcrumbs();
+    setSelectedFileIds([]);
+    setSelectedFolderIds([]);
   }, [folderId]);
 
   const handleNavigate = (targetId: number | null) => {
@@ -103,7 +139,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await fetchApi("/api/folders/", {
+      await fetchApi("/api/v1/folders/", {
         method: "POST",
         body: JSON.stringify({
           name: newFolderName,
@@ -118,20 +154,33 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Trigger pre-flight simulation
+  // Pre-flight duplicate check & simulation
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check duplicate
+    try {
+      const dupCheck = await fetchApi("/api/v1/files/check-duplicate/", {
+        method: "POST",
+        body: JSON.stringify({ name: file.name, folder_id: folderId, size: file.size })
+      });
+
+      if (dupCheck.exists) {
+        if (!confirm(`"${file.name}" already exists in this folder. Upload anyway?`)) {
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Duplicate check note:", err);
+    }
+
     setPendingFile(file);
 
     try {
-      const simResult = await fetchApi("/api/files/simulate/", {
+      const simResult = await fetchApi("/api/v1/files/simulate/", {
         method: "POST",
-        body: JSON.stringify({
-          name: file.name,
-          size: file.size
-        })
+        body: JSON.stringify({ name: file.name, size: file.size })
       });
       setSimulation(simResult);
     } catch (e: any) {
@@ -140,7 +189,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Confirm final upload with target folder
   const executeUpload = async () => {
     if (!pendingFile) return;
 
@@ -152,7 +200,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
 
     try {
-      await fetchApi("/api/files/", {
+      await fetchApi("/api/v1/files/", {
         method: "POST",
         body: formData,
       });
@@ -166,22 +214,15 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  // Authenticated Streaming Download
   const handleDownloadFile = async (fileItem: any) => {
     setDownloadingId(fileItem.id);
     try {
       const token = localStorage.getItem("dcs_access_token");
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      
-      const res = await fetch(`${API_BASE}/api/files/${fileItem.id}/download/`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      const res = await fetch(`${API_BASE}/api/v1/files/${fileItem.id}/download/`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-
-      if (!res.ok) {
-        throw new Error("Download request failed");
-      }
+      if (!res.ok) throw new Error("Download request failed");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -193,32 +234,194 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (e: any) {
-      console.error(e);
       alert(e.message || "Failed to download file");
     } finally {
       setDownloadingId(null);
     }
   };
 
-  const handleDeleteFile = async (id: number) => {
+  const handleDownloadFolderZip = async (folderItem: any) => {
     try {
-      await fetchApi(`/api/files/${id}/`, { method: "DELETE" });
+      const token = localStorage.getItem("dcs_access_token");
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const res = await fetch(`${API_BASE}/api/v1/folders/${folderItem.id}/download-zip/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${folderItem.name}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      alert("Failed to download folder ZIP");
+    }
+  };
+
+  // Soft Delete with 8-second Undo Toast
+  const handleDeleteFile = async (fileItem: any) => {
+    try {
+      await fetchApi(`/api/v1/files/${fileItem.id}/`, { method: "DELETE" });
+      loadData();
+
+      // Trigger Undo Toast
+      if (undoToast?.timerId) clearTimeout(undoToast.timerId);
+      const timerId = setTimeout(() => setUndoToast(null), 8000);
+      setUndoToast({
+        id: `file-${fileItem.id}`,
+        name: fileItem.name,
+        type: "file",
+        itemId: fileItem.id,
+        timerId
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteFolder = async (folderItem: any) => {
+    try {
+      await fetchApi(`/api/v1/folders/${folderItem.id}/`, { method: "DELETE" });
+      if (folderId === folderItem.id) {
+        router.push("/dashboard");
+      } else {
+        loadData();
+      }
+
+      if (undoToast?.timerId) clearTimeout(undoToast.timerId);
+      const timerId = setTimeout(() => setUndoToast(null), 8000);
+      setUndoToast({
+        id: `folder-${folderItem.id}`,
+        name: folderItem.name,
+        type: "folder",
+        itemId: folderItem.id,
+        timerId
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!undoToast) return;
+    try {
+      if (undoToast.type === "file") {
+        await fetchApi(`/api/v1/files/${undoToast.itemId}/restore/`, { method: "POST" });
+      } else {
+        await fetchApi(`/api/v1/folders/${undoToast.itemId}/restore/`, { method: "POST" });
+      }
+      if (undoToast.timerId) clearTimeout(undoToast.timerId);
+      setUndoToast(null);
+      loadData();
+    } catch (e) {
+      alert("Failed to undo deletion");
+    }
+  };
+
+  const handleToggleFavorite = async (fileId: number) => {
+    try {
+      await fetchApi(`/api/v1/files/${fileId}/favorite/`, { method: "POST" });
       loadData();
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleDeleteFolder = async (id: number) => {
+  const handleExecuteRename = async () => {
+    if (!renamingItem || !renameValue.trim()) return;
     try {
-      await fetchApi(`/api/folders/${id}/`, { method: "DELETE" });
-      if (folderId === id) {
-        router.push("/dashboard");
+      if (renamingItem.type === "file") {
+        await fetchApi(`/api/v1/files/${renamingItem.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: renameValue })
+        });
       } else {
-        loadData();
+        await fetchApi(`/api/v1/folders/${renamingItem.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: renameValue })
+        });
       }
+      setRenamingItem(null);
+      loadData();
     } catch (e) {
-      console.error(e);
+      alert("Failed to rename item");
+    }
+  };
+
+  const handleConfirmMoveCopy = async (targetFolderId: number | null) => {
+    if (!moveCopyTarget) return;
+    try {
+      const { mode, item } = moveCopyTarget;
+      if (mode === "move_file") {
+        await fetchApi(`/api/v1/files/${item.id}/move/`, {
+          method: "POST",
+          body: JSON.stringify({ folder_id: targetFolderId })
+        });
+      } else if (mode === "copy_file") {
+        await fetchApi(`/api/v1/files/${item.id}/copy/`, {
+          method: "POST",
+          body: JSON.stringify({ folder_id: targetFolderId })
+        });
+      } else if (mode === "move_folder") {
+        await fetchApi(`/api/v1/folders/${item.id}/move/`, {
+          method: "POST",
+          body: JSON.stringify({ parent_id: targetFolderId })
+        });
+      } else if (mode === "bulk_move") {
+        await fetchApi(`/api/v1/files/bulk-move/`, {
+          method: "POST",
+          body: JSON.stringify({ file_ids: selectedFileIds, folder_id: targetFolderId })
+        });
+        setSelectedFileIds([]);
+      }
+      setMoveCopyTarget(null);
+      loadData();
+    } catch (e: any) {
+      alert(e.message || "Operation failed");
+    }
+  };
+
+  // Bulk Action Helpers
+  const handleBulkDelete = async () => {
+    if (!confirm(`Move ${selectedFileIds.length} files to trash?`)) return;
+    try {
+      await fetchApi("/api/v1/files/bulk-delete/", {
+        method: "POST",
+        body: JSON.stringify({ file_ids: selectedFileIds })
+      });
+      setSelectedFileIds([]);
+      loadData();
+    } catch (e) {
+      alert("Bulk delete failed");
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    try {
+      const token = localStorage.getItem("dcs_access_token");
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const res = await fetch(`${API_BASE}/api/v1/files/bulk-download/`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ file_ids: selectedFileIds })
+      });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "DCS_Bulk_Download.zip";
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (e) {
+      alert("Bulk download failed");
     }
   };
 
@@ -258,7 +461,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         <div className="max-w-md">
           <h2 className="text-2xl font-bold text-white mb-2">No storage accounts connected</h2>
           <p className="text-zinc-500 text-sm">
-            DCS combines multiple cloud drives into one unified storage pool. Please connect your first Google Drive account to begin uploading files.
+            DCS combines multiple cloud drives into one unified storage pool. Connect your first Google Drive account to start uploading.
           </p>
         </div>
         <Button onClick={() => router.push("/dashboard/storage")} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold shadow-lg">
@@ -272,10 +475,9 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
 
   return (
     <div className="flex-1 overflow-auto p-8 z-10 space-y-8">
-      {/* Header with Breadcrumb Navigation */}
+      {/* Header with Dynamic Breadcrumb Navigation */}
       <header className="flex items-center justify-between">
         <div className="space-y-2 max-w-2xl overflow-hidden">
-          {/* Dynamic Breadcrumbs */}
           <nav className="flex items-center gap-1.5 text-sm text-zinc-400 overflow-x-auto whitespace-nowrap pb-1 no-scrollbar">
             {breadcrumbs.map((item, index) => {
               const isLast = index === breadcrumbs.length - 1;
@@ -317,12 +519,27 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
           </h2>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Multi-select Batch Toolbar */}
+          {selectedFileIds.length > 0 && (
+            <div className="flex items-center gap-2 bg-blue-950/60 border border-blue-500/40 px-3 py-1.5 rounded-xl text-xs text-blue-200 animate-in fade-in">
+              <span className="font-semibold">{selectedFileIds.length} selected</span>
+              <Button size="sm" variant="ghost" onClick={handleBulkDownload} className="h-7 text-xs text-blue-300 hover:text-white">
+                <Download className="w-3.5 h-3.5 mr-1" /> Download
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setMoveCopyTarget({ mode: "bulk_move" })} className="h-7 text-xs text-blue-300 hover:text-white">
+                <Move className="w-3.5 h-3.5 mr-1" /> Move
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleBulkDelete} className="h-7 text-xs text-red-400 hover:text-red-300">
+                <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+              </Button>
+            </div>
+          )}
+
           <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
             <DialogTrigger render={
               <Button variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white">
-                <Plus className="w-4 h-4 mr-2" />
-                New Folder
+                <Plus className="w-4 h-4 mr-2" /> New Folder
               </Button>
             } />
             <DialogContent className="bg-zinc-900 border border-zinc-800 text-white">
@@ -346,23 +563,22 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
           <div>
             <input
               type="file"
-              id="file-upload"
+              ref={fileInputRef}
               className="hidden"
               onChange={handleFileSelect}
               disabled={uploading}
             />
-            <label htmlFor="file-upload">
-              <Button nativeButton={false} render={
-                <span>
-                  {uploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                  ) : (
-                    <UploadCloud className="w-4 h-4 mr-2" />
-                  )}
-                  Upload File
-                </span>
-              } className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg cursor-pointer" />
-            </label>
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg cursor-pointer"
+            >
+              {uploading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+              ) : (
+                <UploadCloud className="w-4 h-4 mr-2" />
+              )}
+              Upload File
+            </Button>
           </div>
         </div>
       </header>
@@ -410,7 +626,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
       {/* Main Contents Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          {/* Folders */}
+          {/* Folders Section */}
           {visibleFolders.length > 0 && (
             <section>
               <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">Folders</h3>
@@ -431,9 +647,21 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                       } />
-                      <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200">
-                        <DropdownMenuItem className="text-red-400 hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}>
-                          <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200 text-xs">
+                        <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); setPropertiesItem(folder); }}>
+                          <Eye className="w-4 h-4 mr-2" /> Properties
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDownloadFolderZip(folder); }}>
+                          <Download className="w-4 h-4 mr-2" /> Download ZIP
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); setRenamingItem({ type: "folder", id: folder.id, name: folder.name }); setRenameValue(folder.name); }}>
+                          <Edit2 className="w-4 h-4 mr-2" /> Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); setMoveCopyTarget({ mode: "move_folder", item: folder }); }}>
+                          <Move className="w-4 h-4 mr-2" /> Move
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-400 hover:bg-zinc-800 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder); }}>
+                          <Trash2 className="w-4 h-4 mr-2" /> Move to Trash
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -443,7 +671,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
             </section>
           )}
 
-          {/* Files */}
+          {/* Files Section */}
           <section>
             <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">
               Files {folderId ? `in "${currentFolderName}"` : ""}
@@ -452,59 +680,103 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
               <div className="text-center py-16 bg-zinc-900/20 rounded-2xl border border-zinc-800 border-dashed">
                 <UploadCloud className="w-10 h-10 text-zinc-600 mx-auto mb-4" />
                 <h3 className="text-md font-medium text-zinc-300">No files in this location</h3>
-                <p className="text-zinc-500 text-xs">Upload your file to store it here.</p>
+                <p className="text-zinc-500 text-xs">Upload files to store them here.</p>
               </div>
             ) : (
               <div className="bg-zinc-900/50 backdrop-blur rounded-2xl border border-zinc-800 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
+                      <th className="p-4 w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedFileIds.length === visibleFiles.length && visibleFiles.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedFileIds(visibleFiles.map(f => f.id));
+                            else setSelectedFileIds([]);
+                          }}
+                          className="accent-blue-500 cursor-pointer"
+                        />
+                      </th>
                       <th className="p-4 font-semibold">Name</th>
                       <th className="p-4 font-semibold">Size</th>
                       <th className="p-4 font-semibold">Stored In</th>
                       <th className="p-4 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/50">
-                    {visibleFiles.map(file => (
-                      <tr key={file.id} className="hover:bg-zinc-800/20 transition-colors group">
-                        <td className="p-4 flex items-center gap-3">
-                          <FileIcon className="w-6 h-6 text-purple-400 shrink-0" />
-                          <span className="font-medium text-zinc-200 truncate max-w-[200px]">{file.name}</span>
-                        </td>
-                        <td className="p-4 text-zinc-400 text-sm">{formatSize(file.size)}</td>
-                        <td className="p-4 text-zinc-500 text-sm truncate max-w-[120px]">{file.storage_account?.nickname || 'Google Drive'}</td>
-                        <td className="p-4 text-right flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white"
-                            disabled={downloadingId === file.id}
-                            onClick={() => handleDownloadFile(file)}
-                          >
-                            <Download className="w-4 h-4 mr-1.5" />
-                            {downloadingId === file.id ? "Downloading..." : "Download"}
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger render={
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            } />
-                            <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200">
-                              {file.web_view_link && (
-                                <DropdownMenuItem className="hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer" onClick={() => window.open(file.web_view_link, "_blank")}>
-                                  View on Drive
+                  <tbody className="divide-y divide-zinc-800/50 text-xs">
+                    {visibleFiles.map(file => {
+                      const isSelected = selectedFileIds.includes(file.id);
+                      return (
+                        <tr key={file.id} className={`hover:bg-zinc-800/20 transition-colors group ${isSelected ? "bg-blue-950/20" : ""}`}>
+                          <td className="p-4">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedFileIds([...selectedFileIds, file.id]);
+                                else setSelectedFileIds(selectedFileIds.filter(id => id !== file.id));
+                              }}
+                              className="accent-blue-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-4 flex items-center gap-3">
+                            <Star
+                              onClick={() => handleToggleFavorite(file.id)}
+                              className={`w-4 h-4 cursor-pointer transition-colors ${file.is_favorite ? "text-amber-400 fill-amber-400" : "text-zinc-600 hover:text-amber-400"}`}
+                            />
+                            <FileIcon className="w-5 h-5 text-purple-400 shrink-0" />
+                            <span className="font-medium text-zinc-200 truncate max-w-[200px]">{file.name}</span>
+                          </td>
+                          <td className="p-4 text-zinc-400">{formatSize(file.size)}</td>
+                          <td className="p-4 text-zinc-500 truncate max-w-[120px]">{file.storage_account?.nickname || 'Google Drive'}</td>
+                          <td className="p-4 text-right flex justify-end gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setPreviewFile(file)} className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white">
+                              <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white"
+                              disabled={downloadingId === file.id}
+                              onClick={() => handleDownloadFile(file)}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1" />
+                              {downloadingId === file.id ? "Downloading..." : "Download"}
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger render={
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500">
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              } />
+                              <DropdownMenuContent align="end" className="bg-zinc-900 border-zinc-800 text-zinc-200 text-xs">
+                                <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={() => setPropertiesItem(file)}>
+                                  <Eye className="w-4 h-4 mr-2" /> Properties
                                 </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem className="text-red-400 hover:bg-zinc-800 focus:bg-zinc-800 cursor-pointer" onClick={() => handleDeleteFile(file.id)}>
-                                <Trash2 className="w-4 h-4 mr-2" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </tr>
-                    ))}
+                                <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={() => { setRenamingItem({ type: "file", id: file.id, name: file.name }); setRenameValue(file.name); }}>
+                                  <Edit2 className="w-4 h-4 mr-2" /> Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "move_file", item: file })}>
+                                  <Move className="w-4 h-4 mr-2" /> Move
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={() => setMoveCopyTarget({ mode: "copy_file", item: file })}>
+                                  <Copy className="w-4 h-4 mr-2" /> Copy
+                                </DropdownMenuItem>
+                                {file.web_view_link && (
+                                  <DropdownMenuItem className="hover:bg-zinc-800 cursor-pointer" onClick={() => window.open(file.web_view_link, "_blank")}>
+                                    View on Drive
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem className="text-red-400 hover:bg-zinc-800 cursor-pointer" onClick={() => handleDeleteFile(file)}>
+                                  <Trash2 className="w-4 h-4 mr-2" /> Move to Trash
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -528,8 +800,8 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
                   <div key={act.id} className="relative space-y-1">
                     <div className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-blue-500 ring-4 ring-zinc-950"></div>
                     <p className="text-xs text-zinc-500">{new Date(act.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                    <p className="text-sm text-zinc-300 font-semibold">{act.action === 'upload' ? 'File Uploaded' : act.action === 'delete' ? 'File Deleted' : act.action === 'connect' ? 'Drive Connected' : 'Drive Disconnected'}</p>
-                    <p className="text-xs text-zinc-500 truncate max-w-[200px]">{act.details?.filename || act.details?.drive_nickname}</p>
+                    <p className="text-sm text-zinc-300 font-semibold">{act.action === 'upload' ? 'File Uploaded' : act.action === 'delete' ? 'Moved to Trash' : act.action === 'connect' ? 'Drive Connected' : act.action}</p>
+                    <p className="text-xs text-zinc-500 truncate max-w-[200px]">{act.details?.filename || act.details?.folder_name || act.details?.drive_nickname}</p>
                   </div>
                 ))}
               </div>
@@ -538,32 +810,69 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         </div>
       </div>
 
-      {/* Storage Breakdown Detail Modal */}
-      <Dialog open={isBreakdownOpen} onOpenChange={setIsBreakdownOpen}>
-        <DialogContent className="bg-zinc-900 border border-zinc-800 text-white max-w-lg">
+      {/* Properties Panel Drawer */}
+      <PropertiesPanel
+        item={propertiesItem}
+        isOpen={!!propertiesItem}
+        onClose={() => setPropertiesItem(null)}
+        onDownload={handleDownloadFile}
+      />
+
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={handleDownloadFile}
+      />
+
+      {/* Move & Copy Modal */}
+      <MoveCopyModal
+        isOpen={!!moveCopyTarget}
+        onClose={() => setMoveCopyTarget(null)}
+        onConfirm={handleConfirmMoveCopy}
+        title={moveCopyTarget?.mode.includes("move") ? "Move Item" : "Copy File"}
+        actionLabel={moveCopyTarget?.mode.includes("move") ? "Move Here" : "Copy Here"}
+      />
+
+      {/* Inline Rename Dialog */}
+      <Dialog open={!!renamingItem} onOpenChange={() => setRenamingItem(null)}>
+        <DialogContent className="bg-zinc-900 border border-zinc-800 text-white max-w-sm">
           <DialogHeader>
-            <DialogTitle>Storage Breakdown Overview</DialogTitle>
+            <DialogTitle>Rename {renamingItem?.type === "file" ? "File" : "Folder"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[300px] overflow-y-auto">
-            {stats?.drives_breakdown?.map((d: any) => (
-              <div key={d.id} className="space-y-2 border-b border-zinc-800 pb-3 last:border-0 last:pb-0">
-                <div className="flex justify-between items-center text-sm">
-                  <div>
-                    <p className="font-semibold text-zinc-200">{d.nickname}</p>
-                    <p className="text-xs text-zinc-500">{d.email}</p>
-                  </div>
-                  <p className="text-xs text-zinc-400 font-bold">{formatSize(d.used)} of {formatSize(d.total)} ({d.percentage}%)</p>
-                </div>
-                <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${d.percentage}%` }}></div>
-                </div>
-              </div>
-            ))}
+          <div className="py-3">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="New Name"
+              className="bg-zinc-950 border-zinc-800 text-white text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setRenamingItem(null)} className="flex-1 border-zinc-800 text-zinc-300">
+              Cancel
+            </Button>
+            <Button onClick={handleExecuteRename} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold">
+              Save Name
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Upload Simulation Dialog (Pre-flight Confirmation) */}
+      {/* Undo Toast Notification (8-second Window) */}
+      {undoToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-3 shadow-2xl flex items-center gap-4 text-xs animate-in slide-in-from-bottom duration-200">
+          <span className="text-zinc-200">
+            Moved <strong className="text-white">{undoToast.name}</strong> to trash.
+          </span>
+          <Button size="sm" onClick={handleUndo} className="bg-blue-600 hover:bg-blue-500 text-white h-7 text-xs font-semibold">
+            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Undo
+          </Button>
+        </div>
+      )}
+
+      {/* Pre-flight Upload Simulation Modal */}
       <Dialog open={!!pendingFile && !!simulation} onOpenChange={() => { setPendingFile(null); setSimulation(null); }}>
         <DialogContent className="bg-zinc-900 border border-zinc-800 text-white max-w-md">
           <DialogHeader>
@@ -586,16 +895,12 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
                 </div>
                 <div className="h-px bg-zinc-800"></div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Best Destination:</span>
+                  <span className="text-zinc-500">Selected Destination:</span>
                   <span className="font-bold text-green-400">{simulation.nickname}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Current Free Space:</span>
-                  <span className="text-zinc-300">{formatSize(simulation.current_free)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Projected Free Space:</span>
-                  <span className="text-zinc-300 font-semibold">{formatSize(simulation.projected_free)}</span>
+                  <span className="text-zinc-500">Placement Reason:</span>
+                  <span className="text-blue-300 font-medium">Most Free Space ({formatSize(simulation.current_free)})</span>
                 </div>
               </div>
               

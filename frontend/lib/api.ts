@@ -16,7 +16,13 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  // Automatically prepend /v1 if path starts with /api/ and doesn't already have /v1
+  let normalizedEndpoint = endpoint;
+  if (normalizedEndpoint.startsWith("/api/") && !normalizedEndpoint.startsWith("/api/v1/")) {
+    normalizedEndpoint = normalizedEndpoint.replace("/api/", "/api/v1/");
+  }
+
+  const response = await fetch(`${API_BASE}${normalizedEndpoint}`, {
     ...options,
     headers,
   });
@@ -28,4 +34,3 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
   return response.json().catch(() => ({}));
 }
-

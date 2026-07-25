@@ -14,6 +14,8 @@ class File(models.Model):
     mime_type = models.CharField(max_length=255, default='application/octet-stream')
     web_view_link = models.URLField(max_length=1024, blank=True, null=True)
 
+    checksum = models.CharField(max_length=64, blank=True, null=True)
+    is_favorite = models.BooleanField(default=False)
     is_trashed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

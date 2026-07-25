@@ -158,3 +158,67 @@ class GoogleDriveProvider(StorageProvider):
         except Exception as e:
             logger.error(f"Non-HTTP Error in delete_file: {str(e)}")
             return False
+
+    def rename_object(self, provider_file_id: str, new_name: str) -> bool:
+        endpoint = f"drive.files.update(fileId='{provider_file_id}', name='{new_name}')"
+        try:
+            logger.info(f"Executing API request: {endpoint}")
+            self.service.files().update(
+                fileId=provider_file_id,
+                body={'name': new_name}
+            ).execute()
+            logger.info("Rename completed successfully")
+            return True
+        except HttpError as e:
+            self._handle_http_error(e, endpoint)
+            return False
+        except Exception as e:
+            logger.error(f"Non-HTTP Error in rename_object: {str(e)}")
+            return False
+
+    def move_object(self, provider_file_id: str, previous_parent_id: str, new_parent_id: str) -> bool:
+        endpoint = f"drive.files.update(fileId='{provider_file_id}', addParents='{new_parent_id}', removeParents='{previous_parent_id}')"
+        try:
+            logger.info(f"Executing API request: {endpoint}")
+            req = self.service.files().update(
+                fileId=provider_file_id,
+                addParents=new_parent_id,
+                fields='id, parents'
+            )
+            if previous_parent_id:
+                req.removeParents = previous_parent_id
+            req.execute()
+            logger.info("Move completed successfully")
+            return True
+        except HttpError as e:
+            self._handle_http_error(e, endpoint)
+            return False
+        except Exception as e:
+            logger.error(f"Non-HTTP Error in move_object: {str(e)}")
+            return False
+
+    def copy_file(self, provider_file_id: str, new_name: str, parent_id: str = None) -> Dict[str, Any]:
+        endpoint = f"drive.files.copy(fileId='{provider_file_id}')"
+        try:
+            logger.info(f"Executing API request: drive.files.copy for fileId: {provider_file_id}")
+            body = {'name': new_name}
+            if parent_id:
+                body['parents'] = [parent_id]
+            copied = self.service.files().copy(
+                fileId=provider_file_id,
+                body=body,
+                fields='id, size, webViewLink'
+            ).execute()
+            logger.info("Copy completed successfully")
+            return {
+                'provider_file_id': copied.get('id'),
+                'size': int(copied.get('size', 0)),
+                'web_view_link': copied.get('webViewLink')
+            }
+        except HttpError as e:
+            self._handle_http_error(e, endpoint)
+            raise e
+        except Exception as e:
+            logger.error(f"Non-HTTP Error in copy_file: {str(e)}")
+            raise e
+
