@@ -6,7 +6,7 @@ import {
   Folder as FolderIcon, FileText, Image as ImageIcon, Video as VideoIcon, 
   FileSpreadsheet, File as GenericFileIcon, UploadCloud, Plus, MoreVertical, Trash2, 
   HardDrive, Download, ChevronRight, ArrowLeft, Eye, Edit2, Move, Copy, Star,
-  LayoutList, LayoutGrid, RotateCcw, Check
+  LayoutList, LayoutGrid, RotateCcw, Check, X, Loader2, RefreshCw, ChevronUp, ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +42,14 @@ interface UndoToast {
   timerId: any;
 }
 
+interface UploadTask {
+  id: string;
+  file: File;
+  status: "pending" | "uploading" | "completed" | "error";
+  progress: number;
+  error?: string;
+}
+
 export default function StorageExplorer({ folderId = null }: { folderId?: number | null }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +60,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   const [loading, setLoading] = useState(true);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: null, name: "Root" }]);
   
-  // Default to List View (Google Drive standard)
+  // Default to List View (Google Drive Standard)
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   // Selection state
@@ -74,10 +82,10 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
   const [renamingItem, setRenamingItem] = useState<{ type: "file" | "folder"; id: number; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  // Upload Simulation & Queue
-  const [pendingFile, setPendingFile] = useState<any>(null);
-  const [simulation, setSimulation] = useState<any>(null);
-  const [uploading, setUploading] = useState(false);
+  // Multi-File Upload Review Modal & Queue State
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
+  const [isQueueOpen, setIsQueueOpen] = useState(true);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   // Undo Toast Queue
@@ -137,7 +145,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
       setPropertiesItem(null);
       setPreviewFile(null);
       setRenamingItem(null);
-      setPendingFile(null);
+      setPendingFiles([]);
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "n") {
@@ -189,45 +197,56 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Multiple File Selection Handler
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFiles = Array.from(e.target.files || []);
+    if (rawFiles.length === 0) return;
+    setPendingFiles(rawFiles);
+  };
 
-    try {
-      const dupCheck = await fetchApi("/api/v1/files/check-duplicate/", {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, folder_id: folderId, size: file.size })
-      });
+  // Process Multi-file Upload Queue (Google Drive Style Background Flow)
+  const executeBatchUpload = async () => {
+    if (pendingFiles.length === 0) return;
 
-      if (dupCheck.exists) {
-        if (!confirm(`"${file.name}" already exists in this folder. Upload anyway?`)) {
-          return;
-        }
+    const newTasks: UploadTask[] = pendingFiles.map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      status: "pending",
+      progress: 0,
+    }));
+
+    setUploadQueue(prev => [...newTasks, ...prev]);
+    setPendingFiles([]);
+    setIsQueueOpen(true);
+
+    for (const task of newTasks) {
+      setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "uploading", progress: 30 } : t));
+
+      const formData = new FormData();
+      formData.append("file", task.file);
+      if (folderId) {
+        formData.append("folder", folderId.toString());
       }
-    } catch (err) {
-      console.error("Duplicate check note:", err);
-    }
 
-    setPendingFile(file);
+      try {
+        await fetchApi("/api/v1/files/", {
+          method: "POST",
+          body: formData,
+        });
 
-    try {
-      const simResult = await fetchApi("/api/v1/files/simulate/", {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, size: file.size })
-      });
-      setSimulation(simResult);
-    } catch (e: any) {
-      alert(e.message || "Simulation failed. Do you have connected drives?");
-      setPendingFile(null);
+        setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "completed", progress: 100 } : t));
+        loadData();
+      } catch (err: any) {
+        setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "error", error: err.message || "Upload failed" } : t));
+      }
     }
   };
 
-  const executeUpload = async () => {
-    if (!pendingFile) return;
+  const handleRetryUpload = async (task: UploadTask) => {
+    setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "uploading", progress: 30, error: undefined } : t));
 
-    setUploading(true);
     const formData = new FormData();
-    formData.append("file", pendingFile);
+    formData.append("file", task.file);
     if (folderId) {
       formData.append("folder", folderId.toString());
     }
@@ -237,13 +256,11 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         method: "POST",
         body: formData,
       });
-      setPendingFile(null);
-      setSimulation(null);
+
+      setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "completed", progress: 100 } : t));
       loadData();
-    } catch (e: any) {
-      alert(e.message || "Upload failed");
-    } finally {
-      setUploading(false);
+    } catch (err: any) {
+      setUploadQueue(prev => prev.map(t => t.id === task.id ? { ...t, status: "error", error: err.message || "Upload failed" } : t));
     }
   };
 
@@ -465,7 +482,6 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
     return `${gb.toFixed(2)} GB`;
   };
 
-  // Google Drive Style Icon Mapping (20-22px)
   const getFileIcon = (file: any) => {
     const mime = file.mime_type?.toLowerCase() || "";
     const name = file.name?.toLowerCase() || "";
@@ -631,30 +647,25 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
               type="file"
               ref={fileInputRef}
               className="hidden"
+              multiple
               onChange={handleFileSelect}
-              disabled={uploading}
             />
             <Button
               onClick={() => fileInputRef.current?.click()}
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-xs transition-all cursor-pointer"
             >
-              {uploading ? (
-                <div className="animate-spin rounded-full h-3.5 w-3.5 border-t-2 border-b-2 border-white mr-1.5"></div>
-              ) : (
-                <UploadCloud className="w-3.5 h-3.5 mr-1.5" />
-              )}
-              Upload File
+              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Upload Files
             </Button>
           </div>
         </div>
       </header>
 
-      {/* 3. Unified Google Drive-Style Explorer Table (Row Height 48px, Hover #F8FAFC, Selected #E8F0FE) */}
+      {/* 3. Unified Google Drive-Style Explorer Table */}
       {visibleFolders.length === 0 && visibleFiles.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 border-dashed">
           <UploadCloud className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <h3 className="text-sm font-bold text-slate-800">No files or folders in this location</h3>
-          <p className="text-slate-400 text-xs mt-1">Upload files or create folders to organize your unified workspace.</p>
+          <p className="text-slate-400 text-xs mt-1">Upload multiple files or create folders to organize your workspace.</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
@@ -681,7 +692,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
-              {/* FOLDERS LIST FIRST (Drive Row Height 48px = h-12) */}
+              {/* FOLDERS LIST FIRST */}
               {visibleFolders.map((folder) => {
                 const isSelected = selectedFolderIds.includes(folder.id);
                 return (
@@ -752,7 +763,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
                 );
               })}
 
-              {/* FILES LIST SECOND (Drive Row Height 48px = h-12) */}
+              {/* FILES LIST SECOND */}
               {visibleFiles.map((file) => {
                 const isSelected = selectedFileIds.includes(file.id);
                 return (
@@ -884,56 +895,98 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
         </DialogContent>
       </Dialog>
 
-      {/* Undo Toast Notification (8-second Window, Bottom-Right Desktop 24px) */}
+      {/* Multi-File Upload Pre-flight Review Modal */}
+      <Dialog open={pendingFiles.length > 0} onOpenChange={() => setPendingFiles([])}>
+        <DialogContent className="bg-white border border-slate-200 text-slate-900 max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Upload {pendingFiles.length} {pendingFiles.length === 1 ? "File" : "Files"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+              {pendingFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center justify-between pt-2 text-xs">
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-slate-800 truncate">{file.name}</span>
+                  </div>
+                  <span className="text-slate-400 font-mono text-[11px] shrink-0 ml-2">{formatSize(file.size)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-slate-100">
+              <Button variant="outline" onClick={() => setPendingFiles([])} className="flex-1 border-slate-200 text-slate-600 text-xs">
+                Cancel
+              </Button>
+              <Button onClick={executeBatchUpload} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs">
+                Upload {pendingFiles.length} {pendingFiles.length === 1 ? "File" : "Files"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Google Drive Style Background Upload Queue Drawer (Bottom-Right) */}
+      {uploadQueue.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-40 bg-white border border-slate-200 rounded-2xl shadow-xl max-w-sm w-full overflow-hidden animate-in slide-in-from-bottom-2 duration-180">
+          <div className="p-3 bg-slate-900 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold">
+              <UploadCloud className="w-4 h-4 text-blue-400" />
+              <span>
+                {uploadQueue.some(t => t.status === "uploading") 
+                  ? `Uploading ${uploadQueue.filter(t => t.status === "completed").length} of ${uploadQueue.length} items`
+                  : `${uploadQueue.filter(t => t.status === "completed").length} uploads complete`}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setIsQueueOpen(!isQueueOpen)} className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white">
+                {isQueueOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+              <button onClick={() => setUploadQueue([])} className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {isQueueOpen && (
+            <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 p-2 text-xs">
+              {uploadQueue.map(task => (
+                <div key={task.id} className="p-2 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    {task.status === "uploading" && <Loader2 className="w-4 h-4 text-blue-600 animate-spin shrink-0" />}
+                    {task.status === "completed" && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                    {task.status === "error" && <X className="w-4 h-4 text-red-600 shrink-0" />}
+                    {task.status === "pending" && <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />}
+                    <span className="font-semibold text-slate-800 truncate">{task.file.name}</span>
+                  </div>
+                  <div className="shrink-0">
+                    {task.status === "error" && (
+                      <Button size="sm" variant="ghost" onClick={() => handleRetryUpload(task)} className="h-6 text-[10px] text-red-600 hover:bg-red-50 p-1">
+                        <RefreshCw className="w-3 h-3 mr-1" /> Retry
+                      </Button>
+                    )}
+                    {task.status === "completed" && <span className="text-[10px] font-bold text-emerald-600">Done</span>}
+                    {task.status === "uploading" && <span className="text-[10px] font-mono text-blue-600">{task.progress}%</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Undo Toast Notification (8-second Window) */}
       {undoToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-xl flex items-center justify-between gap-4 text-xs animate-in slide-in-from-bottom-2 fade-in duration-180 max-w-sm border border-slate-800">
+        <div className="fixed bottom-6 left-6 z-50 bg-slate-900 text-white rounded-2xl px-4 py-3 shadow-xl flex items-center justify-between gap-4 text-xs animate-in slide-in-from-bottom-2 fade-in duration-180 max-w-sm border border-slate-800">
           <span className="truncate max-w-[200px]">Moved <strong className="text-white">{undoToast.name}</strong> to trash.</span>
           <Button size="sm" onClick={handleUndo} className="bg-blue-600 hover:bg-blue-500 text-white h-7 text-xs font-semibold px-3 shrink-0">
             <RotateCcw className="w-3.5 h-3.5 mr-1" /> Undo
           </Button>
         </div>
       )}
-
-      {/* Pre-flight Upload Simulation Modal */}
-      <Dialog open={!!pendingFile && !!simulation} onOpenChange={() => { setPendingFile(null); setSimulation(null); }}>
-        <DialogContent className="bg-white border border-slate-200 text-slate-900 max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-slate-900">Intelligent Storage Placement</DialogTitle>
-          </DialogHeader>
-          {simulation && (
-            <div className="space-y-5 py-2">
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">File Selected:</span>
-                  <span className="font-semibold text-slate-800 truncate max-w-[180px]">{pendingFile?.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">File Size:</span>
-                  <span className="font-bold text-slate-900">{formatSize(pendingFile?.size)}</span>
-                </div>
-                <div className="h-px bg-slate-200"></div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Target Drive:</span>
-                  <span className="font-bold text-blue-600">{simulation.nickname}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Placement Reason:</span>
-                  <span className="text-blue-700 font-semibold">Most Available Quota ({formatSize(simulation.current_free)})</span>
-                </div>
-              </div>
-              
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1 border-slate-200 text-slate-600 text-xs" onClick={() => { setPendingFile(null); setSimulation(null); }}>
-                  Cancel
-                </Button>
-                <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs" onClick={executeUpload}>
-                  {uploading ? "Uploading..." : "Confirm Upload"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
