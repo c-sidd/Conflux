@@ -190,12 +190,12 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 print("========================================================\n")
                 return Response({'error': 'Unable to retrieve email from Google Account'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Business Rule 1: One Google account = one DCS user constraint
+            # Business Rule 1: One Google account = one Conflux user constraint
             existing = StorageAccount.objects.filter(provider_email=email, provider='google').exclude(user=request.user).first()
             if existing:
-                print(f"REJECTED: Google account {email} is already linked to another DCS user account.")
+                print(f"REJECTED: Google account {email} is already linked to another Conflux user account.")
                 print("========================================================\n")
-                return Response({'error': 'This Google Drive account is already linked to another DCS user account.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'This Google Drive account is already linked to another Conflux user account.'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Fetch drive quota info
             drive_quota_url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
@@ -320,7 +320,7 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
         from apps.folders.models import StorageFolder
         from apps.storage.manager import StorageManager
 
-        # Delete ONLY the DCS Workspace folder on Google Drive
+        # Delete ONLY the Conflux Workspace folder on Google Drive
         if account.workspace_folder_id:
             try:
                 manager = StorageManager(user=request.user)
@@ -328,12 +328,12 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 deleted = provider.delete_file(account.workspace_folder_id)
                 if not deleted:
                     return Response({
-                        'error': 'Failed to delete DCS Workspace from Google Drive. Storage account removal aborted.'
+                        'error': 'Failed to delete Conflux Workspace from Google Drive. Storage account removal aborted.'
                     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             except Exception as e:
                 logger.error(f"Error purging workspace folder: {str(e)}")
                 return Response({
-                    'error': f'Failed to delete DCS Workspace from Google Drive: {str(e)}. Storage account removal aborted.'
+                    'error': f'Failed to delete Conflux Workspace from Google Drive: {str(e)}. Storage account removal aborted.'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Remove database metadata and account record
@@ -348,7 +348,7 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
         account.delete()
         
         return Response({
-            'message': 'DCS Workspace deleted successfully. Storage account disconnected.'
+            'message': 'Conflux Workspace deleted successfully. Storage account disconnected.'
         }, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):

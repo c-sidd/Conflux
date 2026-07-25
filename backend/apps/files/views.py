@@ -240,7 +240,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
         zip_buffer.seek(0)
         response = FileResponse(zip_buffer, content_type='application/zip')
-        response['Content-Disposition'] = 'attachment; filename="DCS_Bulk_Download.zip"'
+        response['Content-Disposition'] = 'attachment; filename="Conflux_Bulk_Download.zip"'
         return response
 
     @action(detail=False, methods=['post'], url_path='check-duplicate')

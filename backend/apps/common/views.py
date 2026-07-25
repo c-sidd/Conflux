@@ -45,7 +45,7 @@ class AboutView(APIView):
                 "Virtual Filesystem",
                 "Storage Pooling",
                 "Smart Placement Strategy",
-                "DCS Workspace Isolation"
+                "Conflux Workspace Isolation"
             ]
         })
 

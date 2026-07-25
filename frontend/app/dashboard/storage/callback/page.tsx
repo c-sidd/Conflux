@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/auth-context";
 import { fetchApi } from "@/lib/api";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
 import { BRAND } from "@/lib/brand";
 
 export default function OAuthCallback() {
@@ -36,7 +35,7 @@ export default function OAuthCallback() {
       try {
         const redirectUri = `${window.location.origin}/dashboard/storage/callback`;
         
-        await fetchApi("/api/storage/accounts/connect-oauth/", {
+        await fetchApi("/api/v1/storage/accounts/connect-oauth/", {
           method: "POST",
           body: JSON.stringify({
             code,
@@ -57,20 +56,20 @@ export default function OAuthCallback() {
   }, [loading, user, searchParams, router]);
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-zinc-950 text-white p-4">
-      <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center space-y-6">
+    <div className="flex h-screen w-full items-center justify-center bg-[#F8FAFC] text-slate-900 p-4">
+      <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-6 shadow-sm">
         {processing ? (
           <>
-            <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
-            <h1 className="text-xl font-bold">Linking Google Drive Account</h1>
-            <p className="text-zinc-400 text-sm">Exchanging authorization credentials and setting up {BRAND.workspaceFolder} workspace root folder...</p>
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
+            <h1 className="text-xl font-extrabold text-slate-900">Linking Google Drive Account</h1>
+            <p className="text-slate-500 text-xs">Exchanging authorization credentials and initializing {BRAND.workspaceFolder} workspace root folder...</p>
           </>
         ) : error ? (
           <>
             <ShieldAlert className="w-12 h-12 text-red-500 mx-auto" />
-            <h1 className="text-xl font-bold text-red-400">Connection Failed</h1>
-            <p className="text-zinc-400 text-sm">{error}</p>
-            <Button onClick={() => router.push(!user ? "/" : "/dashboard/storage")} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white">
+            <h1 className="text-xl font-extrabold text-slate-900">Connection Failed</h1>
+            <p className="text-slate-600 text-xs leading-relaxed">{error}</p>
+            <Button onClick={() => router.push(!user ? "/" : "/dashboard/storage")} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-xl shadow-xs">
               {!user ? `Log in to ${BRAND.name}` : "Back to Storage Accounts"}
             </Button>
           </>
