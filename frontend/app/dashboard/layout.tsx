@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter, usePathname } from "next/navigation";
-import { Folder, HardDrive, Settings, LogOut, Clock, Star, Trash2, Search as SearchIcon } from "lucide-react";
+import { 
+  Folder, HardDrive, Settings, LogOut, Clock, Star, Trash2, Search as SearchIcon, 
+  Activity, Shield, Command, ChevronRight, User, X
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetchApi } from "@/lib/api";
 import { BRAND } from "@/lib/brand";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default function DashboardLayout({
   children,
@@ -27,29 +31,37 @@ export default function DashboardLayout({
     }
   }, [loading, user, router]);
 
+  // Global Keyboard Listener (Cmd+K / Ctrl+K)
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      setIsSearchOpen(prev => !prev);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
       setSearchResults({ files: [], folders: [] });
-      setIsSearchOpen(false);
       return;
     }
-
-    const timer = setTimeout(() => {
-      fetchApi(`/api/v1/search/?q=${encodeURIComponent(searchQuery)}`)
-        .then(res => {
-          setSearchResults(res);
-          setIsSearchOpen(true);
-        })
-        .catch(console.error);
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    try {
+      const data = await fetchApi(`/api/v1/search/?q=${encodeURIComponent(query)}`);
+      setSearchResults(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   if (loading || !user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-zinc-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -58,116 +70,175 @@ export default function DashboardLayout({
   const initial = (user.first_name || user.email).charAt(0).toUpperCase();
 
   const navItems = [
-    { label: "My Files", href: "/dashboard", icon: Folder, color: "text-blue-400" },
-    { label: "Recent", href: "/dashboard/recent", icon: Clock, color: "text-purple-400" },
-    { label: "Favorites", href: "/dashboard/favorites", icon: Star, color: "text-amber-400" },
-    { label: "Storage Accounts", href: "/dashboard/storage", icon: HardDrive, color: "text-emerald-400" },
-    { label: "Insights", href: "/dashboard/insights", icon: Settings, color: "text-cyan-400" },
-    { label: "Activity", href: "/dashboard/activity", icon: Clock, color: "text-blue-400" },
-    { label: "Settings", href: "/dashboard/settings", icon: Settings, color: "text-zinc-400" },
-    { label: "Trash", href: "/dashboard/trash", icon: Trash2, color: "text-red-400" },
+    { label: "My Files", href: "/dashboard", icon: Folder },
+    { label: "Recent", href: "/dashboard/recent", icon: Clock },
+    { label: "Favorites", href: "/dashboard/favorites", icon: Star },
+    { label: "Storage Accounts", href: "/dashboard/storage", icon: HardDrive },
+    { label: "Insights", href: "/dashboard/insights", icon: Settings },
+    { label: "Activity", href: "/dashboard/activity", icon: Activity },
+    { label: "Settings", href: "/dashboard/settings", icon: Settings },
+    { label: "Trash", href: "/dashboard/trash", icon: Trash2 },
   ];
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden">
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-900 overflow-hidden font-sans antialiased">
       {/* Sidebar */}
-      <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
-        <div className="p-6 flex items-center justify-between">
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-transparent cursor-pointer" onClick={() => router.push("/dashboard")}>
-            {BRAND.name}
-          </h1>
-          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold border border-blue-500/30">v{BRAND.version}</span>
-        </div>
-
-        {/* Instant Search Bar */}
-        <div className="px-4 mb-4 relative">
-          <div className="relative">
-            <SearchIcon className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search type:pdf folder:AI..."
-              className="bg-zinc-950 border-zinc-800 text-xs text-white pl-9 h-9"
-            />
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none z-20">
+        <div>
+          {/* Logo Header */}
+          <div className="p-5 flex items-center justify-between border-b border-slate-100">
+            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => router.push("/dashboard")}>
+              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black shadow-sm">
+                C
+              </div>
+              <div>
+                <h1 className="text-base font-extrabold text-slate-900 tracking-tight leading-none">
+                  {BRAND.name}
+                </h1>
+                <span className="text-[10px] text-slate-400 font-medium">Cloud Storage OS</span>
+              </div>
+            </div>
+            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold border border-blue-200">
+              v{BRAND.version}
+            </span>
           </div>
 
-          {/* Search Autocomplete Dropdown */}
-          {isSearchOpen && (searchResults.files.length > 0 || searchResults.folders.length > 0) && (
-            <div className="absolute left-4 right-4 top-11 z-50 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-2 space-y-1 max-h-64 overflow-y-auto text-xs">
-              {searchResults.folders.map(f => (
-                <div
-                  key={`sf-${f.id}`}
-                  onClick={() => {
-                    setIsSearchOpen(false);
-                    setSearchQuery("");
-                    router.push(`/dashboard/folder/${f.id}`);
-                  }}
-                  className="p-2 hover:bg-zinc-800 rounded-xl flex items-center gap-2 cursor-pointer text-zinc-300"
+          {/* Quick Search Shortcut Trigger */}
+          <div className="p-4">
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              className="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-500 transition-all group"
+            >
+              <div className="flex items-center gap-2">
+                <SearchIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
+                <span>Search files...</span>
+              </div>
+              <kbd className="bg-white border border-slate-200 text-[10px] text-slate-400 font-mono px-1.5 py-0.5 rounded shadow-2xs">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="px-3 space-y-0.5">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              return (
+                <button
+                  key={item.href}
+                  onClick={() => router.push(item.href)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? "bg-blue-50 text-blue-700 font-bold shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
                 >
-                  <Folder className="w-4 h-4 text-blue-400 shrink-0" />
-                  <span className="truncate">{f.name}</span>
-                </div>
-              ))}
-              {searchResults.files.map(fi => (
-                <div
-                  key={`sfi-${fi.id}`}
-                  onClick={() => {
-                    setIsSearchOpen(false);
-                    setSearchQuery("");
-                    router.push(fi.folder ? `/dashboard/folder/${fi.folder}` : "/dashboard");
-                  }}
-                  className="p-2 hover:bg-zinc-800 rounded-xl flex items-center gap-2 cursor-pointer text-zinc-300"
-                >
-                  <Folder className="w-4 h-4 text-purple-400 shrink-0" />
-                  <span className="truncate">{fi.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
+                  <Icon className={`w-4 h-4 ${isActive ? "text-blue-600" : "text-slate-400"}`} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href));
-            return (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${isActive ? "bg-zinc-800 text-white font-bold" : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white"}`}
-              >
-                <Icon className={`w-4 h-4 ${item.color}`} />
-                {item.label}
-              </a>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-zinc-800">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center font-bold text-white shadow">
-              {initial}
+        {/* User Footer */}
+        <div className="p-3 border-t border-slate-100">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/60">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                {initial}
+              </div>
+              <div className="overflow-hidden text-left">
+                <p className="text-xs font-bold text-slate-900 truncate leading-tight">{displayName}</p>
+                <p className="text-[10px] text-slate-400 truncate leading-none">{user.email}</p>
+              </div>
             </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium truncate capitalize">{displayName}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.email}</p>
-            </div>
+            <button
+              onClick={logout}
+              title="Sign Out"
+              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            onClick={() => logout()}
-            className="flex items-center gap-2 text-zinc-400 hover:text-red-400 transition-colors w-full px-2 py-1.5 text-xs font-semibold rounded-lg hover:bg-zinc-800/50 cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+      {/* Main Layered Content Container */}
+      <main className="flex-1 bg-[#FCFCFD] overflow-auto flex flex-col">
         {children}
       </main>
+
+      {/* Global Cmd+K Search Modal */}
+      <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+        <DialogContent className="bg-white border border-slate-200 p-0 rounded-2xl max-w-xl shadow-xl overflow-hidden">
+          <div className="p-3 border-b border-slate-100 flex items-center gap-3">
+            <SearchIcon className="w-4 h-4 text-slate-400 ml-2" />
+            <Input
+              autoFocus
+              placeholder="Search files, folders, or type:pdf..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="border-none bg-transparent focus-visible:ring-0 text-sm text-slate-900 placeholder:text-slate-400 p-0"
+            />
+            <kbd className="bg-slate-100 border border-slate-200 text-[10px] text-slate-500 font-mono px-1.5 py-0.5 rounded mr-2">
+              ESC
+            </kbd>
+          </div>
+
+          <div className="max-h-96 overflow-y-auto p-2">
+            {!searchQuery.trim() ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                Type keywords or structured queries like <code className="bg-slate-100 px-1 py-0.5 rounded">type:pdf</code>
+              </div>
+            ) : searchResults.files.length === 0 && searchResults.folders.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">
+                No matching results found for "{searchQuery}"
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {searchResults.folders.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 block">Folders</span>
+                    {searchResults.folders.map(f => (
+                      <div
+                        key={f.id}
+                        onClick={() => { setIsSearchOpen(false); router.push(`/dashboard/folder/${f.id}`); }}
+                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 cursor-pointer text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Folder className="w-4 h-4 text-blue-500" />
+                          <span className="font-semibold text-slate-800">{f.name}</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {searchResults.files.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1 block">Files</span>
+                    {searchResults.files.map(f => (
+                      <div
+                        key={f.id}
+                        onClick={() => { setIsSearchOpen(false); router.push(`/dashboard?highlight=${f.id}`); }}
+                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 cursor-pointer text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Folder className="w-4 h-4 text-purple-500" />
+                          <span className="font-semibold text-slate-800">{f.name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{f.storage_account?.nickname}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
