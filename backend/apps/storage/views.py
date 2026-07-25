@@ -190,6 +190,13 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
                 print("========================================================\n")
                 return Response({'error': 'Unable to retrieve email from Google Account'}, status=status.HTTP_400_BAD_REQUEST)
 
+            # Business Rule 1: One Google account = one DCS user constraint
+            existing = StorageAccount.objects.filter(provider_email=email, provider='google').exclude(user=request.user).first()
+            if existing:
+                print(f"REJECTED: Google account {email} is already linked to another DCS user account.")
+                print("========================================================\n")
+                return Response({'error': 'This Google Drive account is already linked to another DCS user account.'}, status=status.HTTP_400_BAD_REQUEST)
+
             # Fetch drive quota info
             drive_quota_url = "https://www.googleapis.com/drive/v3/about?fields=storageQuota"
             print(f"Fetching Drive Quota API: {drive_quota_url}")
@@ -262,6 +269,19 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             print("========================================================\n")
             return Response({'error': str(e), 'traceback': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='disconnect-preview')
+    def disconnect_preview(self, request, pk=None):
+        account = self.get_object()
+        from apps.files.models import File
+        file_count = File.objects.filter(storage_account=account, user=request.user).count()
+        return Response({
+            'account_id': account.id,
+            'nickname': account.nickname,
+            'provider_email': account.provider_email,
+            'file_count': file_count,
+            'used_storage': account.used_storage
+        })
+
     def perform_destroy(self, instance):
         ActivityLog.objects.create(
             user=self.request.user,
@@ -269,6 +289,7 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             details={'drive_nickname': instance.nickname, 'drive_email': instance.provider_email}
         )
         instance.delete()
+
 
 class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActivityLogSerializer

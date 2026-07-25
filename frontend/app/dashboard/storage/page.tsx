@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api";
-import { HardDrive, Plus, RefreshCw, Trash2, Edit2, Check, X, ShieldAlert } from "lucide-react";
+import { HardDrive, Plus, RefreshCw, Trash2, Edit2, Check, X, ShieldAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function StorageAccounts() {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -15,6 +14,11 @@ export default function StorageAccounts() {
   const [editNickname, setEditNickname] = useState("");
   const [testingId, setTestingId] = useState<number | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+
+  // Safe Disconnection Modal states
+  const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
+  const [disconnectPreview, setDisconnectPreview] = useState<any | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const loadAccounts = async () => {
     try {
@@ -42,7 +46,7 @@ export default function StorageAccounts() {
     const redirectUri = `${window.location.origin}/dashboard/storage/callback`;
     const scope = "openid email profile https://www.googleapis.com/auth/drive";
     
-    // Force consent and account selection to ensure refresh token is always returned
+    // Force consent and account selection to ensure refresh token is returned
     const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
@@ -54,13 +58,35 @@ export default function StorageAccounts() {
     window.location.href = oauthUrl;
   };
 
-  const handleDisconnect = async (id: number) => {
-    if (!confirm("Are you sure you want to disconnect this storage account? This will not delete files from Google Drive, but DCS will no longer manage them.")) return;
+  const openDisconnectModal = async (account: any) => {
+    setLoadingPreview(true);
+    setDisconnectModalOpen(true);
     try {
-      await fetchApi(`/api/storage/accounts/${id}/`, { method: "DELETE" });
-      loadAccounts();
+      const preview = await fetchApi(`/api/storage/accounts/${account.id}/disconnect-preview/`);
+      setDisconnectPreview(preview);
     } catch (e) {
-      alert("Failed to disconnect account");
+      console.error("Failed to fetch disconnect preview", e);
+      setDisconnectPreview({
+        account_id: account.id,
+        nickname: account.nickname,
+        provider_email: account.provider_email,
+        file_count: 0,
+        used_storage: account.used_storage
+      });
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const confirmDisconnect = async () => {
+    if (!disconnectPreview) return;
+    try {
+      await fetchApi(`/api/storage/accounts/${disconnectPreview.account_id}/`, { method: "DELETE" });
+      setDisconnectModalOpen(false);
+      setDisconnectPreview(null);
+      loadAccounts();
+    } catch (e: any) {
+      alert(e.message || "Failed to disconnect account");
     }
   };
 
@@ -119,7 +145,7 @@ export default function StorageAccounts() {
       <header className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-3xl font-bold text-white">Storage Accounts</h2>
-          <p className="text-zinc-400 text-sm mt-1">Connect and manage the cloud drives that power DCS</p>
+          <p className="text-zinc-400 text-sm mt-1">Connect and manage cloud drives that power DCS</p>
         </div>
         <Button onClick={handleConnectGoogle} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg cursor-pointer">
           <Plus className="w-4 h-4 mr-2" />
@@ -135,7 +161,7 @@ export default function StorageAccounts() {
         <div className="text-center py-20 bg-zinc-900/30 rounded-2xl border border-zinc-800 border-dashed">
           <HardDrive className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-zinc-300">No storage accounts connected</h3>
-          <p className="text-zinc-500 mb-6">You must connect at least one Google Drive account to start storing files.</p>
+          <p className="text-zinc-500 mb-6">Connect at least one Google Drive account to start storing files.</p>
           <Button onClick={handleConnectGoogle} className="bg-blue-600 hover:bg-blue-700 text-white">
             Connect First Account
           </Button>
@@ -221,7 +247,7 @@ export default function StorageAccounts() {
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => handleDisconnect(acc.id)}
+                      onClick={() => openDisconnectModal(acc)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -231,6 +257,70 @@ export default function StorageAccounts() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {/* Safe Disconnection Modal */}
+      {disconnectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-red-400">
+              <ShieldAlert className="w-8 h-8 flex-shrink-0" />
+              <div>
+                <h3 className="text-lg font-bold text-white">Disconnect Storage Account?</h3>
+                <p className="text-xs text-zinc-400">Review impact before removing this drive.</p>
+              </div>
+            </div>
+
+            {loadingPreview ? (
+              <div className="py-8 text-center text-zinc-400 space-y-2">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
+                <p className="text-sm">Calculating stored files & storage metrics...</p>
+              </div>
+            ) : disconnectPreview ? (
+              <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-850 text-sm">
+                <div className="flex justify-between border-b border-zinc-800 pb-2">
+                  <span className="text-zinc-400">Drive Account:</span>
+                  <span className="font-semibold text-zinc-200">{disconnectPreview.nickname}</span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-800 pb-2">
+                  <span className="text-zinc-400">Google Email:</span>
+                  <span className="text-zinc-300">{disconnectPreview.provider_email}</span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-800 pb-2">
+                  <span className="text-zinc-400">Active Files Stored:</span>
+                  <span className="font-bold text-amber-400">{disconnectPreview.file_count} files</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Storage Used:</span>
+                  <span className="font-bold text-amber-400">{formatStorage(disconnectPreview.used_storage)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Disconnecting will un-link this Google Drive from your DCS platform. Physical files remain safe on Google Drive inside <code className="text-blue-400 bg-zinc-950 px-1 py-0.5 rounded">DCS_Workspace</code>, but will not be accessible via DCS until re-connected.
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDisconnectModalOpen(false)}
+                className="flex-1 border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={confirmDisconnect}
+                className="flex-1 bg-red-600 hover:bg-red-500 font-semibold"
+              >
+                Confirm Disconnect
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -55,14 +55,15 @@ export default function StorageInsights() {
       name: d.nickname,
       usedPct: d.total > 0 ? (d.used / d.total * 100) : 0
     }));
-    const maxUtil = Math.max(...driveUtils.map(d => d.usedPct));
-    const minUtil = Math.min(...driveUtils.map(d => d.usedPct));
+    const maxUtil = Math.max(...driveUtils.map((d: any) => d.usedPct));
+    const minUtil = Math.min(...driveUtils.map((d: any) => d.usedPct));
 
     if (maxUtil - minUtil > 30) {
-      const highest = driveUtils.find(d => d.usedPct === maxUtil);
-      const lowest = driveUtils.find(d => d.usedPct === minUtil);
+      const highest = driveUtils.find((d: any) => d.usedPct === maxUtil);
+      const lowest = driveUtils.find((d: any) => d.usedPct === minUtil);
       return `Suggestion: Storage utilization mismatch detected. Drive '${highest?.name}' (${maxUtil.toFixed(0)}% used) is significantly more utilized than '${lowest?.name}' (${minUtil.toFixed(0)}% used). Upload rules can help balance future file distribution.`;
     }
+
     return "Status: DCS Storage pool is perfectly balanced. File distribution is operating optimally.";
   };
 

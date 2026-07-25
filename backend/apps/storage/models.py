@@ -29,6 +29,7 @@ class StorageAccount(models.Model):
     nickname = models.CharField(max_length=255, default='My Cloud Storage')
     provider_email = models.EmailField()
     provider_account_id = models.CharField(max_length=255, blank=True, null=True)
+    workspace_folder_id = models.CharField(max_length=255, blank=True, null=True)
 
     # Encrypted fields
     encrypted_access_token = models.TextField()

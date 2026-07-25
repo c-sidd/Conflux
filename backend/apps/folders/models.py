@@ -14,3 +14,15 @@ class Folder(models.Model):
 
     def __str__(self):
         return f"{self.name} (User: {self.user.email})"
+
+class StorageFolder(models.Model):
+    folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name='storage_mappings')
+    storage_account = models.ForeignKey('storage.StorageAccount', on_delete=models.CASCADE, related_name='folder_mappings')
+    provider_folder_id = models.CharField(max_length=255)
+
+    class Meta:
+        unique_together = ('folder', 'storage_account')
+
+    def __str__(self):
+        return f"{self.folder.name} -> {self.storage_account.nickname} ({self.provider_folder_id})"
+

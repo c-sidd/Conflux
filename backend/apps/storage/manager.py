@@ -96,11 +96,61 @@ class StorageManager:
                 "error": str(e)
             }
 
-    def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, size: int = 0) -> Dict[str, Any]:
+    def ensure_workspace_root(self, account: StorageAccount, provider: StorageProvider) -> str:
+        if account.workspace_folder_id:
+            return account.workspace_folder_id
+        
+        if hasattr(provider, 'get_or_create_workspace_root'):
+            ws_id = provider.get_or_create_workspace_root()
+            account.workspace_folder_id = ws_id
+            account.save(update_fields=['workspace_folder_id'])
+            return ws_id
+        return None
+
+    def ensure_folder_on_account(self, account: StorageAccount, provider: StorageProvider, folder_id: int = None) -> str:
+        ws_root_id = self.ensure_workspace_root(account, provider)
+        if not folder_id:
+            return ws_root_id
+            
+        from apps.folders.models import Folder, StorageFolder
+        try:
+            target_folder = Folder.objects.get(id=folder_id, user=self.user)
+        except Folder.DoesNotExist:
+            return ws_root_id
+
+        # Build parent chain from top-level down to target_folder
+        chain = []
+        curr = target_folder
+        while curr:
+            chain.append(curr)
+            curr = curr.parent
+        chain.reverse()
+
+        parent_provider_id = ws_root_id
+        for f in chain:
+            mapping = StorageFolder.objects.filter(folder=f, storage_account=account).first()
+            if mapping:
+                parent_provider_id = mapping.provider_folder_id
+            else:
+                if hasattr(provider, 'get_or_create_folder'):
+                    created_id = provider.get_or_create_folder(f.name, parent_id=parent_provider_id)
+                    StorageFolder.objects.create(
+                        folder=f,
+                        storage_account=account,
+                        provider_folder_id=created_id
+                    )
+                    parent_provider_id = created_id
+                else:
+                    break
+
+        return parent_provider_id
+
+    def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, size: int = 0, folder_id: int = None) -> Dict[str, Any]:
         account = self.select_best_account(required_size=size)
         provider = self._get_provider_instance(account)
         
-        result = provider.upload_file(file_obj, filename, mime_type)
+        parent_id = self.ensure_folder_on_account(account, provider, folder_id=folder_id)
+        result = provider.upload_file(file_obj, filename, mime_type, parent_id=parent_id)
         
         # Update local quota
         account.used_storage += result.get('size', size)
@@ -125,6 +175,7 @@ class StorageManager:
             'size': result['size'],
             'web_view_link': result['web_view_link']
         }
+
 
     def download_file(self, account_id: int, provider_file_id: str) -> BinaryIO:
         account = StorageAccount.objects.get(id=account_id, user=self.user)

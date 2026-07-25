@@ -32,15 +32,22 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
         
         folder_id = request.data.get('folder')
+        if folder_id:
+            try:
+                folder_id = int(folder_id)
+            except (ValueError, TypeError):
+                folder_id = None
+
         manager = StorageManager(user=request.user)
         
         try:
-            print(f"Uploading file '{uploaded_file.name}' ({uploaded_file.size} bytes, mime: {uploaded_file.content_type})...")
+            print(f"Uploading file '{uploaded_file.name}' ({uploaded_file.size} bytes, mime: {uploaded_file.content_type}, folder: {folder_id})...")
             upload_result = manager.upload_file(
                 file_obj=uploaded_file.file,
                 filename=uploaded_file.name,
                 mime_type=uploaded_file.content_type,
-                size=uploaded_file.size
+                size=uploaded_file.size,
+                folder_id=folder_id
             )
             print(f"Upload Result: {upload_result}")
             
@@ -75,6 +82,24 @@ class FileViewSet(viewsets.ModelViewSet):
         )
         instance.delete()
 
+    @action(detail=True, methods=['get'], url_path='download')
+    def download(self, request, pk=None):
+        from django.http import FileResponse
+        file_instance = self.get_object()
+        manager = StorageManager(user=request.user)
+        try:
+            file_stream = manager.download_file(
+                account_id=file_instance.storage_account.id,
+                provider_file_id=file_instance.provider_file_id
+            )
+            response = FileResponse(file_stream, content_type=file_instance.mime_type or 'application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{file_instance.name}"'
+            response['Content-Length'] = file_instance.size
+            return response
+        except Exception as e:
+            logger.error(f"Error streaming file download: {str(e)}")
+            return Response({'error': f"Download failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['post'], url_path='simulate')
     def simulate(self, request):
         filename = request.data.get('name')
@@ -94,3 +119,4 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({'error': result.get('error')}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response(result, status=status.HTTP_200_OK)
+

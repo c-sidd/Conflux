@@ -1,16 +1,12 @@
-import { getSession } from "next-auth/react";
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const session = await getSession();
+  const token = typeof window !== "undefined" ? localStorage.getItem("dcs_access_token") : null;
   
   const headers = new Headers(options.headers || {});
   
-  // @ts-ignore
-  if (session?.accessToken) {
-    // @ts-ignore
-    headers.set("Authorization", `Bearer ${session.accessToken}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   // Ensure Content-Type is deleted for FormData so browser sets multipart/form-data with boundary
@@ -32,3 +28,4 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
   return response.json().catch(() => ({}));
 }
+

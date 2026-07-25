@@ -55,13 +55,55 @@ class GoogleDriveProvider(StorageProvider):
             logger.error(f"Non-HTTP Error in get_quota: {str(e)}")
             raise e
 
-    def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str) -> Dict[str, Any]:
+    def get_or_create_folder(self, folder_name: str, parent_id: str = None) -> str:
+        endpoint = "drive.files.list/create"
+        try:
+            q = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            if parent_id:
+                q += f" and '{parent_id}' in parents"
+            
+            results = self.service.files().list(
+                q=q,
+                fields="files(id, name)",
+                pageSize=1
+            ).execute()
+            files = results.get('files', [])
+            
+            if files:
+                return files[0]['id']
+            
+            # Create folder
+            folder_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            if parent_id:
+                folder_metadata['parents'] = [parent_id]
+                
+            created_folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            return created_folder.get('id')
+        except HttpError as e:
+            self._handle_http_error(e, endpoint)
+        except Exception as e:
+            logger.error(f"Error in get_or_create_folder: {str(e)}")
+            raise e
+
+    def get_or_create_workspace_root(self) -> str:
+        return self.get_or_create_folder("DCS_Workspace")
+
+    def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, parent_id: str = None) -> Dict[str, Any]:
         endpoint = "drive.files.create"
         try:
             file_metadata = {'name': filename}
+            if parent_id:
+                file_metadata['parents'] = [parent_id]
+
             media = MediaIoBaseUpload(file_obj, mimetype=mime_type, resumable=True)
             
-            logger.info(f"Executing API request: drive.files.create(name='{filename}', mime='{mime_type}')")
+            logger.info(f"Executing API request: drive.files.create(name='{filename}', mime='{mime_type}', parent='{parent_id}')")
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
@@ -79,6 +121,7 @@ class GoogleDriveProvider(StorageProvider):
         except Exception as e:
             logger.error(f"Non-HTTP Error in upload_file: {str(e)}")
             raise e
+
 
     def download_file(self, provider_file_id: str) -> BinaryIO:
         endpoint = f"drive.files.get_media(fileId='{provider_file_id}')"
