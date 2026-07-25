@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api";
-import { Activity as ActivityIcon, ShieldCheck, Clock } from "lucide-react";
+import { Activity as ActivityIcon, ShieldCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import EmptyState from "@/components/empty-state";
 
@@ -18,36 +18,36 @@ export default function ActivityPage() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-auto p-8 z-10 space-y-8">
-      <header>
-        <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-          <ActivityIcon className="w-8 h-8 text-blue-400" /> Audit Activity Log
+    <div className="flex-1 overflow-auto p-6 space-y-6">
+      <header className="border-b border-slate-200/80 pb-4">
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+          <ActivityIcon className="w-6 h-6 text-blue-600" /> Audit Activity Timeline
         </h2>
-        <p className="text-zinc-400 text-sm mt-1">Complete system action audit trail and security events.</p>
+        <p className="text-xs text-slate-500 mt-1">Chronological history of security events, file operations, and storage synchronization.</p>
       </header>
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
         </div>
       ) : activities.length === 0 ? (
         <EmptyState
           icon={ShieldCheck}
           title="No activity recorded"
-          description="Actions performed in your workspace will appear in this audit log."
+          description="Workspace activities and security events will be logged here in real-time."
         />
       ) : (
-        <Card className="bg-zinc-900/50 backdrop-blur border-zinc-800 p-6">
-          <div className="space-y-6 relative border-l border-zinc-800 pl-6 ml-3">
+        <Card className="bg-white border-slate-200 p-6 rounded-2xl shadow-2xs">
+          <div className="space-y-6 relative border-l border-slate-200 pl-6 ml-3">
             {activities.map(act => (
-              <div key={act.id} className="relative space-y-1">
-                <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-blue-500 ring-4 ring-zinc-950"></div>
-                <div className="flex justify-between items-center text-xs text-zinc-500">
-                  <span className="font-mono">{new Date(act.timestamp).toLocaleString()}</span>
-                  <span className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded font-semibold uppercase">{act.action}</span>
+              <div key={act.id} className="relative space-y-1 text-xs">
+                <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-blue-600 ring-4 ring-slate-100"></div>
+                <div className="flex justify-between items-center text-slate-500">
+                  <span className="font-mono text-[11px]">{new Date(act.timestamp).toLocaleString()}</span>
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold uppercase text-[10px] border border-slate-200">{act.action}</span>
                 </div>
-                <p className="text-sm font-bold text-white">{act.details?.filename || act.details?.folder_name || act.details?.drive_nickname || act.action}</p>
-                <div className="text-xs text-zinc-400 font-mono bg-zinc-950 p-2 rounded-xl border border-zinc-850">
+                <p className="text-sm font-bold text-slate-900">{act.details?.filename || act.details?.folder_name || act.details?.drive_nickname || act.action}</p>
+                <div className="text-[11px] text-slate-600 font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                   {JSON.stringify(act.details)}
                 </div>
               </div>

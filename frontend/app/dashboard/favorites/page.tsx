@@ -2,19 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api";
-import { Star, File as FileIcon, Download } from "lucide-react";
+import { Star, File as FileIcon, Download, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import EmptyState from "@/components/empty-state";
+import FilePreviewModal from "@/components/file-preview-modal";
 
 export default function FavoritesPage() {
-  const [files, setFiles] = useState<any[]>([]);
+  const [favoriteFiles, setFavoriteFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [previewFile, setPreviewFile] = useState<any | null>(null);
 
   const loadFavorites = async () => {
     try {
-      const data = await fetchApi("/api/v1/files/");
-      const favorites = data.filter((f: any) => f.is_favorite);
-      setFiles(favorites);
+      const files: any[] = await fetchApi("/api/v1/files/");
+      setFavoriteFiles(files.filter((f: any) => f.is_favorite && !f.is_trashed));
     } catch (e) {
       console.error(e);
     } finally {
@@ -26,16 +27,16 @@ export default function FavoritesPage() {
     loadFavorites();
   }, []);
 
-  const handleToggleFavorite = async (id: number) => {
+  const handleUnfavorite = async (id: number) => {
     try {
       await fetchApi(`/api/v1/files/${id}/favorite/`, { method: "POST" });
       loadFavorites();
     } catch (e) {
-      alert("Failed to update favorite status");
+      console.error(e);
     }
   };
 
-  const handleDownload = async (fileItem: any) => {
+  const handleDownloadFile = async (fileItem: any) => {
     try {
       const token = localStorage.getItem("dcs_access_token");
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -56,49 +57,60 @@ export default function FavoritesPage() {
     }
   };
 
+  const formatSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return "0 B";
+    const mb = bytes / 1024 / 1024;
+    return `${mb.toFixed(1)} MB`;
+  };
+
   return (
-    <div className="flex-1 overflow-auto p-8 z-10 space-y-8">
-      <header>
-        <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Star className="w-8 h-8 text-amber-400 fill-amber-400" /> Favorite Files
+    <div className="flex-1 overflow-auto p-6 space-y-6">
+      <header className="border-b border-slate-200/80 pb-4">
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+          <Star className="w-6 h-6 text-amber-500 fill-amber-500" /> Starred Favorites
         </h2>
-        <p className="text-zinc-400 text-sm mt-1">Starred files for quick access.</p>
+        <p className="text-xs text-slate-500 mt-1">Important files starred for quick one-click access.</p>
       </header>
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
         </div>
-      ) : files.length === 0 ? (
-        <div className="text-center py-20 bg-zinc-900/30 rounded-2xl border border-zinc-800 border-dashed">
-          <Star className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-zinc-300">No favorite files</h3>
-          <p className="text-zinc-500">Click the star icon on any file to add it to favorites.</p>
-        </div>
+      ) : favoriteFiles.length === 0 ? (
+        <EmptyState
+          icon={Star}
+          title="No starred favorites"
+          description="Click the star icon next to any file to add it to your favorites list."
+        />
       ) : (
-        <Card className="bg-zinc-900/50 backdrop-blur border-zinc-800 overflow-hidden">
-          <table className="w-full text-left border-collapse">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
-                <th className="p-4 font-semibold">Name</th>
-                <th className="p-4 font-semibold">Type</th>
-                <th className="p-4 font-semibold text-right">Actions</th>
+              <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-50/50">
+                <th className="p-3.5 font-bold">Name</th>
+                <th className="p-3.5 font-bold">Size</th>
+                <th className="p-3.5 font-bold">Storage Account</th>
+                <th className="p-3.5 font-bold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/50">
-              {files.map(fi => (
-                <tr key={fi.id} className="hover:bg-zinc-800/20 transition-colors">
-                  <td className="p-4 flex items-center gap-3 font-medium text-zinc-200">
+            <tbody className="divide-y divide-slate-100">
+              {favoriteFiles.map((file) => (
+                <tr key={file.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-3.5 flex items-center gap-2.5 font-semibold text-slate-900">
                     <Star
-                      className="w-5 h-5 text-amber-400 fill-amber-400 cursor-pointer shrink-0"
-                      onClick={() => handleToggleFavorite(fi.id)}
+                      onClick={() => handleUnfavorite(file.id)}
+                      className="w-4 h-4 text-amber-500 fill-amber-500 cursor-pointer"
                     />
-                    <FileIcon className="w-5 h-5 text-purple-400 shrink-0" />
-                    <span>{fi.name}</span>
+                    <FileIcon className="w-4 h-4 text-purple-600 shrink-0" />
+                    <span className="truncate max-w-xs">{file.name}</span>
                   </td>
-                  <td className="p-4 text-zinc-400 text-sm">{fi.mime_type || 'File'}</td>
-                  <td className="p-4 text-right space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => handleDownload(fi)} className="border-zinc-800 text-zinc-300 hover:text-white">
+                  <td className="p-3.5 text-slate-500 font-mono text-[11px]">{formatSize(file.size)}</td>
+                  <td className="p-3.5 text-slate-500">{file.storage_account?.nickname}</td>
+                  <td className="p-3.5 text-right space-x-2">
+                    <Button size="sm" variant="ghost" onClick={() => setPreviewFile(file)} className="h-7 text-xs text-slate-600">
+                      <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+                    </Button>
+                    <Button size="sm" onClick={() => handleDownloadFile(file)} className="h-7 text-xs bg-blue-600 text-white">
                       <Download className="w-3.5 h-3.5 mr-1" /> Download
                     </Button>
                   </td>
@@ -106,8 +118,15 @@ export default function FavoritesPage() {
               ))}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
+
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={!!previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={handleDownloadFile}
+      />
     </div>
   );
 }
