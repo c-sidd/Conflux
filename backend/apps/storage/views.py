@@ -269,6 +269,29 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             print("========================================================\n")
             return Response({'error': str(e), 'traceback': traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['get'], url_path='google-auth-url')
+    def google_auth_url(self, request):
+        from urllib.parse import quote
+        redirect_uri = request.query_params.get('redirect_uri')
+        if not redirect_uri:
+            return Response({'error': 'redirect_uri parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        client_id = settings.GOOGLE_CLIENT_ID
+        if not client_id:
+            return Response({'error': 'GOOGLE_CLIENT_ID not configured in backend .env'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        scope = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email"
+        url = (
+            f"https://accounts.google.com/o/oauth2/v2/auth?"
+            f"client_id={quote(client_id, safe='')}&"
+            f"redirect_uri={quote(redirect_uri, safe='')}&"
+            f"response_type=code&"
+            f"scope={quote(scope, safe='')}&"
+            f"access_type=offline&"
+            f"prompt=consent"
+        )
+        return Response({"url": url})
+
     @action(detail=True, methods=['get'], url_path='disconnect-preview')
     def disconnect_preview(self, request, pk=None):
         account = self.get_object()
