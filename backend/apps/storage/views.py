@@ -273,22 +273,82 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
     def disconnect_preview(self, request, pk=None):
         account = self.get_object()
         from apps.files.models import File
+        from apps.folders.models import StorageFolder
+        
         file_count = File.objects.filter(storage_account=account, user=request.user).count()
+        folder_count = StorageFolder.objects.filter(storage_account=account).count()
+        
         return Response({
             'account_id': account.id,
             'nickname': account.nickname,
             'provider_email': account.provider_email,
             'file_count': file_count,
-            'used_storage': account.used_storage
+            'folder_count': folder_count,
+            'used_storage': account.used_storage,
+            'workspace_folder_name': 'DCS_Workspace',
+            'workspace_folder_id': account.workspace_folder_id
         })
 
-    def perform_destroy(self, instance):
+    @action(detail=True, methods=['post'], url_path='purge-and-disconnect')
+    def purge_and_disconnect(self, request, pk=None):
+        account = self.get_object()
+        from apps.files.models import File
+        from apps.folders.models import StorageFolder
+        from apps.storage.manager import StorageManager
+
+        # Delete ONLY the DCS Workspace folder on Google Drive
+        if account.workspace_folder_id:
+            try:
+                manager = StorageManager(user=request.user)
+                provider = manager._get_provider_instance(account)
+                deleted = provider.delete_file(account.workspace_folder_id)
+                if not deleted:
+                    return Response({
+                        'error': 'Failed to delete DCS Workspace from Google Drive. Storage account removal aborted.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                logger.error(f"Error purging workspace folder: {str(e)}")
+                return Response({
+                    'error': f'Failed to delete DCS Workspace from Google Drive: {str(e)}. Storage account removal aborted.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Remove database metadata and account record
+        File.objects.filter(storage_account=account).delete()
+        StorageFolder.objects.filter(storage_account=account).delete()
+        
+        ActivityLog.objects.create(
+            user=request.user,
+            action='disconnect',
+            details={'mode': 'delete_workspace', 'drive_nickname': account.nickname, 'drive_email': account.provider_email}
+        )
+        account.delete()
+        
+        return Response({
+            'message': 'DCS Workspace deleted successfully. Storage account disconnected.'
+        }, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        account = self.get_object()
+        from apps.files.models import File
+        from apps.folders.models import StorageFolder
+        
+        mode = request.query_params.get('mode', 'disconnect_only')
+        
+        # Clean up database files and folder mappings for this account
+        File.objects.filter(storage_account=account).delete()
+        StorageFolder.objects.filter(storage_account=account).delete()
+        
         ActivityLog.objects.create(
             user=self.request.user,
             action='disconnect',
-            details={'drive_nickname': instance.nickname, 'drive_email': instance.provider_email}
+            details={'mode': mode, 'drive_nickname': account.nickname, 'drive_email': account.provider_email}
         )
-        instance.delete()
+        account.delete()
+        
+        return Response({
+            'message': 'Storage account disconnected. Files remain safely stored in Google Drive.'
+        }, status=status.HTTP_200_OK)
+
 
 
 class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):

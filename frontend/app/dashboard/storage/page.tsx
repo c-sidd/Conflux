@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchApi } from "@/lib/api";
-import { HardDrive, Plus, RefreshCw, Trash2, Edit2, Check, X, ShieldAlert, Loader2 } from "lucide-react";
+import { HardDrive, Plus, RefreshCw, Trash2, Edit2, Check, X, ShieldAlert, Loader2, Info, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,13 @@ export default function StorageAccounts() {
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
   const [disconnectPreview, setDisconnectPreview] = useState<any | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  
+  // Guided removal step states
+  const [removalStep, setRemovalStep] = useState<"SELECT" | "CONFIRM_PURGE">("SELECT");
+  const [confirmText, setConfirmText] = useState("");
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadAccounts = async () => {
     try {
@@ -36,7 +43,7 @@ export default function StorageAccounts() {
   }, []);
 
   const formatStorage = (bytes: number) => {
-    if (bytes === 0) return "0 GB";
+    if (!bytes || bytes === 0) return "0 GB";
     const gb = bytes / 1024 / 1024 / 1024;
     return `${gb.toFixed(2)} GB`;
   };
@@ -46,7 +53,6 @@ export default function StorageAccounts() {
     const redirectUri = `${window.location.origin}/dashboard/storage/callback`;
     const scope = "openid email profile https://www.googleapis.com/auth/drive";
     
-    // Force consent and account selection to ensure refresh token is returned
     const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${clientId}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
@@ -61,6 +67,11 @@ export default function StorageAccounts() {
   const openDisconnectModal = async (account: any) => {
     setLoadingPreview(true);
     setDisconnectModalOpen(true);
+    setRemovalStep("SELECT");
+    setConfirmText("");
+    setConfirmChecked(false);
+    setErrorMessage(null);
+
     try {
       const preview = await fetchApi(`/api/storage/accounts/${account.id}/disconnect-preview/`);
       setDisconnectPreview(preview);
@@ -71,22 +82,52 @@ export default function StorageAccounts() {
         nickname: account.nickname,
         provider_email: account.provider_email,
         file_count: 0,
-        used_storage: account.used_storage
+        folder_count: 0,
+        used_storage: account.used_storage,
+        workspace_folder_name: "DCS_Workspace"
       });
     } finally {
       setLoadingPreview(false);
     }
   };
 
-  const confirmDisconnect = async () => {
+  // Case 1 & Option 1: Disconnect Only
+  const handleDisconnectOnly = async () => {
     if (!disconnectPreview) return;
+    setActionLoading(true);
+    setErrorMessage(null);
     try {
-      await fetchApi(`/api/storage/accounts/${disconnectPreview.account_id}/`, { method: "DELETE" });
+      const res = await fetchApi(`/api/storage/accounts/${disconnectPreview.account_id}/?mode=disconnect_only`, {
+        method: "DELETE",
+      });
+      alert(res.message || "Storage account disconnected. Files remain safely stored in Google Drive.");
       setDisconnectModalOpen(false);
       setDisconnectPreview(null);
       loadAccounts();
     } catch (e: any) {
-      alert(e.message || "Failed to disconnect account");
+      setErrorMessage(e.message || "Failed to disconnect account.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Option 2: Delete Workspace & Disconnect (Destructive)
+  const handlePurgeAndDisconnect = async () => {
+    if (!disconnectPreview) return;
+    setActionLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetchApi(`/api/storage/accounts/${disconnectPreview.account_id}/purge-and-disconnect/`, {
+        method: "POST",
+      });
+      alert(res.message || "DCS Workspace deleted successfully. Storage account disconnected.");
+      setDisconnectModalOpen(false);
+      setDisconnectPreview(null);
+      loadAccounts();
+    } catch (e: any) {
+      setErrorMessage(e.message || "Failed to delete DCS Workspace from Google Drive.");
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -139,6 +180,8 @@ export default function StorageAccounts() {
       default: return "bg-zinc-500/10 text-zinc-400 border-zinc-500/20";
     }
   };
+
+  const isDeleteConfirmed = confirmText.trim() === "DELETE" || confirmChecked;
 
   return (
     <div className="flex-1 overflow-auto p-8 z-10">
@@ -259,66 +302,230 @@ export default function StorageAccounts() {
         </Card>
       )}
 
-      {/* Safe Disconnection Modal */}
+      {/* Guided Safe Removal Workflow Modal */}
       {disconnectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3 text-red-400">
-              <ShieldAlert className="w-8 h-8 flex-shrink-0" />
-              <div>
-                <h3 className="text-lg font-bold text-white">Disconnect Storage Account?</h3>
-                <p className="text-xs text-zinc-400">Review impact before removing this drive.</p>
-              </div>
-            </div>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl">
             {loadingPreview ? (
-              <div className="py-8 text-center text-zinc-400 space-y-2">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
-                <p className="text-sm">Calculating stored files & storage metrics...</p>
+              <div className="py-12 text-center text-zinc-400 space-y-3">
+                <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500" />
+                <p className="text-sm font-medium">Analyzing storage account contents...</p>
               </div>
             ) : disconnectPreview ? (
-              <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-850 text-sm">
-                <div className="flex justify-between border-b border-zinc-800 pb-2">
-                  <span className="text-zinc-400">Drive Account:</span>
-                  <span className="font-semibold text-zinc-200">{disconnectPreview.nickname}</span>
-                </div>
-                <div className="flex justify-between border-b border-zinc-800 pb-2">
-                  <span className="text-zinc-400">Google Email:</span>
-                  <span className="text-zinc-300">{disconnectPreview.provider_email}</span>
-                </div>
-                <div className="flex justify-between border-b border-zinc-800 pb-2">
-                  <span className="text-zinc-400">Active Files Stored:</span>
-                  <span className="font-bold text-amber-400">{disconnectPreview.file_count} files</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Storage Used:</span>
-                  <span className="font-bold text-amber-400">{formatStorage(disconnectPreview.used_storage)}</span>
-                </div>
-              </div>
+              <>
+                {/* CASE 1: NO DCS MANAGED FILES */}
+                {disconnectPreview.file_count === 0 ? (
+                  <div className="space-y-5">
+                    <div className="flex items-center gap-3 text-blue-400">
+                      <Info className="w-7 h-7 flex-shrink-0" />
+                      <div>
+                        <h3 className="text-lg font-bold text-white">Disconnect Storage Account</h3>
+                        <p className="text-xs text-zinc-400">{disconnectPreview.provider_email}</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 text-sm space-y-2">
+                      <p className="text-zinc-300 font-medium">This storage account contains no DCS-managed files.</p>
+                      <p className="text-zinc-500 text-xs">You can safely disconnect this account without affecting any files.</p>
+                    </div>
+
+                    {errorMessage && (
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs">
+                        {errorMessage}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={actionLoading}
+                        onClick={() => setDisconnectModalOpen(false)}
+                        className="flex-1 border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={actionLoading}
+                        onClick={handleDisconnectOnly}
+                        className="flex-1 bg-red-600 hover:bg-red-500 font-semibold"
+                      >
+                        {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Disconnect"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* CASE 2: DCS MANAGED FILES EXIST */
+                  <>
+                    {removalStep === "SELECT" ? (
+                      <div className="space-y-5">
+                        <div className="flex items-center gap-3 text-amber-400">
+                          <ShieldAlert className="w-8 h-8 flex-shrink-0" />
+                          <div>
+                            <h3 className="text-lg font-bold text-white">Storage Account Contains Data</h3>
+                            <p className="text-xs text-zinc-400">This Google Drive account still contains DCS-managed files.</p>
+                          </div>
+                        </div>
+
+                        {/* Account Summary Metrics */}
+                        <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 text-xs space-y-2.5">
+                          <div className="flex justify-between border-b border-zinc-850 pb-2">
+                            <span className="text-zinc-400">Provider Email:</span>
+                            <span className="font-semibold text-zinc-200">{disconnectPreview.provider_email}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-zinc-850 pb-2">
+                            <span className="text-zinc-400">Active Files:</span>
+                            <span className="font-bold text-amber-400">{disconnectPreview.file_count} files</span>
+                          </div>
+                          <div className="flex justify-between border-b border-zinc-850 pb-2">
+                            <span className="text-zinc-400">Folders:</span>
+                            <span className="font-bold text-blue-400">{disconnectPreview.folder_count} folders</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Storage Used:</span>
+                            <span className="font-bold text-purple-400">{formatStorage(disconnectPreview.used_storage)}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-zinc-400 leading-relaxed">
+                          Removing this storage account without deleting the workspace will leave those files in Google Drive but DCS will no longer manage them. Choose one of the following options:
+                        </p>
+
+                        {/* Guided Removal Options */}
+                        <div className="space-y-3">
+                          {/* OPTION 1 */}
+                          <div
+                            onClick={handleDisconnectOnly}
+                            className="p-4 bg-zinc-950 hover:bg-zinc-850 border border-blue-500/30 rounded-2xl cursor-pointer transition-all space-y-1 group"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-blue-400 text-sm">Option 1: Disconnect Only</span>
+                              <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">
+                                Recommended
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-400 leading-normal">
+                              Remove storage account from DCS. DCS Workspace and all files remain untouched in Google Drive. You can reconnect later to restore management.
+                            </p>
+                          </div>
+
+                          {/* OPTION 2 */}
+                          <div
+                            onClick={() => setRemovalStep("CONFIRM_PURGE")}
+                            className="p-4 bg-zinc-950 hover:bg-red-950/20 border border-red-500/30 rounded-2xl cursor-pointer transition-all space-y-1 group"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-red-400 text-sm">Option 2: Delete DCS Workspace & Disconnect</span>
+                            </div>
+                            <p className="text-xs text-zinc-400 leading-normal">
+                              Permanently delete <code className="text-red-300">DCS_Workspace</code> and all files inside it on Google Drive, then remove the storage account. Never touches any other Google Drive files.
+                            </p>
+                          </div>
+                        </div>
+
+                        {errorMessage && (
+                          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs">
+                            {errorMessage}
+                          </div>
+                        )}
+
+                        <div className="pt-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDisconnectModalOpen(false)}
+                            className="w-full border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          >
+                            Option 3: Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* STEP 2: CONFIRMATION FOR DESTRUCTIVE PURGE */
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3 text-red-400">
+                          <AlertTriangle className="w-8 h-8 flex-shrink-0" />
+                          <div>
+                            <h3 className="text-lg font-bold text-white">Confirm Workspace Deletion</h3>
+                            <p className="text-xs text-red-300">Permanent deletion of Google Drive files</p>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-red-950/20 border border-red-500/30 rounded-2xl space-y-2 text-xs text-red-200">
+                          <p className="font-semibold">
+                            Warning: DCS Workspace (<code className="text-white bg-red-950 px-1 py-0.5 rounded">DCS_Workspace</code>) and all {disconnectPreview.file_count} managed files inside it will be PERMANENTLY deleted from Google Drive.
+                          </p>
+                          <p className="text-zinc-400">This action cannot be undone.</p>
+                        </div>
+
+                        <div className="space-y-3 pt-1">
+                          <div>
+                            <label className="block text-xs text-zinc-400 mb-1">
+                              Type <strong className="text-white">DELETE</strong> to confirm:
+                            </label>
+                            <Input
+                              type="text"
+                              value={confirmText}
+                              onChange={(e) => setConfirmText(e.target.value)}
+                              placeholder="Type DELETE"
+                              className="bg-zinc-950 border-zinc-800 text-white font-mono text-sm"
+                            />
+                          </div>
+
+                          <div className="flex items-start gap-2 pt-1">
+                            <input
+                              type="checkbox"
+                              id="confirm-check"
+                              checked={confirmChecked}
+                              onChange={(e) => setConfirmChecked(e.target.checked)}
+                              className="mt-0.5 accent-red-500 cursor-pointer"
+                            />
+                            <label htmlFor="confirm-check" className="text-xs text-zinc-300 cursor-pointer select-none leading-normal">
+                              I understand that DCS Workspace and all managed files will be permanently deleted.
+                            </label>
+                          </div>
+                        </div>
+
+                        {errorMessage && (
+                          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs">
+                            {errorMessage}
+                          </div>
+                        )}
+
+                        <div className="flex gap-3 pt-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={actionLoading}
+                            onClick={() => setRemovalStep("SELECT")}
+                            className="flex-1 border-zinc-800 text-zinc-300 hover:bg-zinc-800"
+                          >
+                            Back
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={!isDeleteConfirmed || actionLoading}
+                            onClick={handlePurgeAndDisconnect}
+                            className="flex-1 bg-red-600 hover:bg-red-500 font-semibold"
+                          >
+                            {actionLoading ? (
+                              <span className="flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin" /> Purging Drive...
+                              </span>
+                            ) : (
+                              "Permanently Delete & Disconnect"
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             ) : null}
-
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Disconnecting will un-link this Google Drive from your DCS platform. Physical files remain safe on Google Drive inside <code className="text-blue-400 bg-zinc-950 px-1 py-0.5 rounded">DCS_Workspace</code>, but will not be accessible via DCS until re-connected.
-            </p>
-
-            <div className="flex gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDisconnectModalOpen(false)}
-                className="flex-1 border-zinc-800 text-zinc-300 hover:bg-zinc-800"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={confirmDisconnect}
-                className="flex-1 bg-red-600 hover:bg-red-500 font-semibold"
-              >
-                Confirm Disconnect
-              </Button>
-            </div>
           </div>
         </div>
       )}
