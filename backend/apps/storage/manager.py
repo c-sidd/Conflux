@@ -265,7 +265,7 @@ class StorageManager:
                     stream = self.download_file(fi.storage_account.id, fi.provider_file_id)
                     zip_file.writestr(f"{folder_path}{fi.name}", stream.read())
                 except Exception as e:
-                    print(f"Error packing file {fi.name} into ZIP: {str(e)}")
+                    logger.error(f"Error packing file {fi.name} into ZIP: {str(e)}")
 
             # Add subfolders recursively
             subfolders = Folder.objects.filter(parent_id=f_id, user=self.user, is_trashed=False)

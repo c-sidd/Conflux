@@ -92,7 +92,8 @@ class GoogleDriveProvider(StorageProvider):
             raise e
 
     def get_or_create_workspace_root(self) -> str:
-        return self.get_or_create_folder("DCS_Workspace")
+        from apps.common.branding import WORKSPACE_FOLDER_NAME
+        return self.get_or_create_folder(WORKSPACE_FOLDER_NAME)
 
     def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, parent_id: str = None) -> Dict[str, Any]:
         endpoint = "drive.files.create"

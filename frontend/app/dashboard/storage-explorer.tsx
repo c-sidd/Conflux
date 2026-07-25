@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import PropertiesPanel from "@/components/properties-panel";
 import FilePreviewModal from "@/components/file-preview-modal";
 import MoveCopyModal from "@/components/move-copy-modal";
+import { BRAND } from "@/lib/brand";
 
 interface BreadcrumbItem {
   id: number | null;
@@ -891,7 +892,7 @@ export default function StorageExplorer({ folderId = null }: { folderId?: number
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Target Folder:</span>
-                  <span className="font-semibold text-blue-400">{folderId ? currentFolderName : "Root (DCS_Workspace)"}</span>
+                  <span className="font-semibold text-blue-400">{folderId ? currentFolderName : `Root (${BRAND.workspaceFolder})`}</span>
                 </div>
                 <div className="h-px bg-zinc-800"></div>
                 <div className="flex justify-between text-sm">

@@ -2,6 +2,7 @@
 
 import { X, HardDrive, File as FileIcon, Folder as FolderIcon, Calendar, Hash, ExternalLink, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/brand";
 
 interface PropertiesPanelProps {
   item: any | null;
@@ -82,7 +83,7 @@ export default function PropertiesPanel({ item, isOpen, onClose, onDownload }: P
           <div className="space-y-1 border-t border-zinc-800 pt-3">
             <span className="text-zinc-500 font-semibold uppercase tracking-wider block">Workspace Path</span>
             <code className="text-blue-300 bg-zinc-950 px-2 py-1 rounded block text-[11px] break-all">
-              DCS_Workspace / {item.name}
+              {BRAND.workspaceFolder} / {item.name}
             </code>
           </div>
 

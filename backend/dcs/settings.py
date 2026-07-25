@@ -160,6 +160,7 @@ SIMPLE_JWT = {
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
 ENCRYPTION_KEY = env('ENCRYPTION_KEY', default='HPXRYlXiMVE88R5mJ9WUmOSZXVANWFba')
+WORKSPACE_FOLDER_NAME = env('WORKSPACE_FOLDER_NAME', default='Conflux')
 
 # Celery Configuration
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')

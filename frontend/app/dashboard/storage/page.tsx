@@ -6,6 +6,7 @@ import { HardDrive, Plus, RefreshCw, Trash2, Edit2, Check, X, ShieldAlert, Loade
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { BRAND } from "@/lib/brand";
 
 export default function StorageAccounts() {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -390,7 +391,7 @@ export default function StorageAccounts() {
                         </div>
 
                         <p className="text-xs text-zinc-400 leading-relaxed">
-                          Removing this storage account without deleting the workspace will leave those files in Google Drive but DCS will no longer manage them. Choose one of the following options:
+                          Removing this storage account without deleting the workspace will leave those files in Google Drive but {BRAND.name} will no longer manage them. Choose one of the following options:
                         </p>
 
                         {/* Guided Removal Options */}
@@ -407,7 +408,7 @@ export default function StorageAccounts() {
                               </span>
                             </div>
                             <p className="text-xs text-zinc-400 leading-normal">
-                              Remove storage account from DCS. DCS Workspace and all files remain untouched in Google Drive. You can reconnect later to restore management.
+                              Remove storage account from {BRAND.name}. {BRAND.workspaceFolder} workspace and all files remain untouched in Google Drive. You can reconnect later to restore management.
                             </p>
                           </div>
 
@@ -417,10 +418,10 @@ export default function StorageAccounts() {
                             className="p-4 bg-zinc-950 hover:bg-red-950/20 border border-red-500/30 rounded-2xl cursor-pointer transition-all space-y-1 group"
                           >
                             <div className="flex justify-between items-center">
-                              <span className="font-bold text-red-400 text-sm">Option 2: Delete DCS Workspace & Disconnect</span>
+                              <span className="font-bold text-red-400 text-sm">Option 2: Delete {BRAND.workspaceFolder} Workspace & Disconnect</span>
                             </div>
                             <p className="text-xs text-zinc-400 leading-normal">
-                              Permanently delete <code className="text-red-300">DCS_Workspace</code> and all files inside it on Google Drive, then remove the storage account. Never touches any other Google Drive files.
+                              Permanently delete <code className="text-red-300">{BRAND.workspaceFolder}</code> workspace and all files inside it on Google Drive, then remove the storage account. Never touches any other Google Drive files.
                             </p>
                           </div>
                         </div>
@@ -455,7 +456,7 @@ export default function StorageAccounts() {
 
                         <div className="p-4 bg-red-950/20 border border-red-500/30 rounded-2xl space-y-2 text-xs text-red-200">
                           <p className="font-semibold">
-                            Warning: DCS Workspace (<code className="text-white bg-red-950 px-1 py-0.5 rounded">DCS_Workspace</code>) and all {disconnectPreview.file_count} managed files inside it will be PERMANENTLY deleted from Google Drive.
+                            Warning: {BRAND.name} Workspace (<code className="text-white bg-red-950 px-1 py-0.5 rounded">{BRAND.workspaceFolder}</code>) and all {disconnectPreview.file_count} managed files inside it will be PERMANENTLY deleted from Google Drive.
                           </p>
                           <p className="text-zinc-400">This action cannot be undone.</p>
                         </div>

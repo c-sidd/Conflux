@@ -278,6 +278,7 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
         file_count = File.objects.filter(storage_account=account, user=request.user).count()
         folder_count = StorageFolder.objects.filter(storage_account=account).count()
         
+        from apps.common.branding import WORKSPACE_FOLDER_NAME
         return Response({
             'account_id': account.id,
             'nickname': account.nickname,
@@ -285,7 +286,7 @@ class StorageAccountViewSet(viewsets.ModelViewSet):
             'file_count': file_count,
             'folder_count': folder_count,
             'used_storage': account.used_storage,
-            'workspace_folder_name': 'DCS_Workspace',
+            'workspace_folder_name': WORKSPACE_FOLDER_NAME,
             'workspace_folder_id': account.workspace_folder_id
         })
 

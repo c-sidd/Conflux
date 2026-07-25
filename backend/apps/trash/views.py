@@ -7,7 +7,9 @@ from apps.files.serializers import FileSerializer
 from apps.folders.models import Folder
 from apps.folders.serializers import FolderSerializer
 from apps.storage.manager import StorageManager
-from apps.storage.models import ActivityLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 class TrashListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -38,7 +40,7 @@ class EmptyTrashView(APIView):
             try:
                 manager.delete_file(fi.storage_account.id, fi.provider_file_id, fi.name, fi.size)
             except Exception as e:
-                print(f"Error purging trashed file {fi.name}: {str(e)}")
+                logger.error(f"Error purging trashed file {fi.name}: {str(e)}")
             fi.delete()
             files_purged += 1
 

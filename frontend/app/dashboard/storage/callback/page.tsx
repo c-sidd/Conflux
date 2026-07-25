@@ -7,6 +7,8 @@ import { fetchApi } from "@/lib/api";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { BRAND } from "@/lib/brand";
+
 export default function OAuthCallback() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,7 +20,7 @@ export default function OAuthCallback() {
     if (loading) return;
 
     if (!user) {
-      setError("You must be logged into DCS to connect storage accounts.");
+      setError(`You must be logged into ${BRAND.name} to connect storage accounts.`);
       setProcessing(false);
       return;
     }
@@ -61,7 +63,7 @@ export default function OAuthCallback() {
           <>
             <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
             <h1 className="text-xl font-bold">Linking Google Drive Account</h1>
-            <p className="text-zinc-400 text-sm">Exchanging authorization credentials and setting up DCS Workspace root folder...</p>
+            <p className="text-zinc-400 text-sm">Exchanging authorization credentials and setting up {BRAND.workspaceFolder} workspace root folder...</p>
           </>
         ) : error ? (
           <>
@@ -69,7 +71,7 @@ export default function OAuthCallback() {
             <h1 className="text-xl font-bold text-red-400">Connection Failed</h1>
             <p className="text-zinc-400 text-sm">{error}</p>
             <Button onClick={() => router.push(!user ? "/" : "/dashboard/storage")} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white">
-              {!user ? "Log in to DCS" : "Back to Storage Accounts"}
+              {!user ? `Log in to ${BRAND.name}` : "Back to Storage Accounts"}
             </Button>
           </>
         ) : null}

@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Folder, HardDrive, Settings, LogOut, Clock, Star, Trash2, Search as SearchIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetchApi } from "@/lib/api";
+import { BRAND } from "@/lib/brand";
 
 export default function DashboardLayout({
   children,
@@ -73,9 +74,9 @@ export default function DashboardLayout({
       <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
         <div className="p-6 flex items-center justify-between">
           <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-transparent cursor-pointer" onClick={() => router.push("/dashboard")}>
-            DCS
+            {BRAND.name}
           </h1>
-          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold border border-blue-500/30">v1.5A</span>
+          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold border border-blue-500/30">v{BRAND.version}</span>
         </div>
 
         {/* Instant Search Bar */}

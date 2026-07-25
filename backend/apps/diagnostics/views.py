@@ -23,12 +23,13 @@ class DeveloperDiagnosticsView(APIView):
             'timestamp': last_activity.timestamp
         } if last_activity else None
 
+        from apps.common.branding import WORKSPACE_FOLDER_NAME
         return Response({
             'storage_manager_active_accounts': accounts.filter(is_active=True, health_status='healthy').count(),
             'total_connected_accounts': accounts.count(),
             'accounts': accounts_data,
             'last_upload': last_file_data,
             'last_activity': last_activity_data,
-            'workspace_root_name': 'DCS_Workspace',
+            'workspace_root_name': WORKSPACE_FOLDER_NAME,
             'environment': 'development'
         })

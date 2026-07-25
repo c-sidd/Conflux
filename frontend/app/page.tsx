@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { BRAND } from "@/lib/brand";
 
 export default function Home() {
   const { user, loading, login, register } = useAuth();
@@ -60,10 +61,10 @@ export default function Home() {
       <div className="max-w-md w-full bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-3xl p-8 shadow-2xl z-10 space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-br from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
-            DCS
+            {BRAND.name}
           </h1>
           <p className="text-zinc-400 text-sm">
-            Virtual Distributed Cloud Storage Platform
+            {BRAND.tagline}
           </p>
         </div>
 
