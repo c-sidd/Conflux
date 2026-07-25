@@ -13,17 +13,17 @@ interface EmptyStateProps {
 
 export default function EmptyState({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
-    <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-zinc-800 border-dashed p-8 space-y-4 max-w-lg mx-auto">
-      <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto shadow-xl">
-        <Icon className="w-8 h-8 text-zinc-500" />
+    <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 border-dashed p-8 space-y-4 max-w-md mx-auto shadow-2xs">
+      <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center mx-auto shadow-2xs">
+        <Icon className="w-7 h-7 text-slate-400" />
       </div>
       <div className="space-y-1">
-        <h3 className="text-lg font-bold text-white">{title}</h3>
-        <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">{description}</p>
+        <h3 className="text-base font-bold text-slate-900">{title}</h3>
+        <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">{description}</p>
       </div>
       {actionLabel && onAction && (
         <div className="pt-2">
-          <Button onClick={onAction} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-xs shadow-lg">
+          <Button onClick={onAction} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-xs">
             {actionLabel}
           </Button>
         </div>
