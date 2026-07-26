@@ -21,4 +21,4 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/backend
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "dcs.wsgi:application"]
+CMD ["sh", "-c", "python backend/manage.py migrate --noinput && gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 4 dcs.wsgi:application"]
