@@ -1,0 +1,17 @@
+name: Release Verification
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Version Artifacts
+        run: |
+          echo "Verifying Conflux Release Tag: ${{ github.ref_name }}"
+          grep -q 'version: "1.0.0"' frontend/lib/brand.ts
