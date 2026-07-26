@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { buildApiUrl } from "./api";
 
 interface User {
   id?: number;
@@ -20,8 +21,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -45,15 +44,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE}/api/auth/login/`, {
+    const url = buildApiUrl("/api/v1/auth/login/");
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}. Please check backend service logs.`);
+      }
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || "Login failed");
+      throw new Error(data.error || data.detail || data.message || `Login failed (${res.status})`);
     }
 
     localStorage.setItem("dcs_access_token", data.access);
@@ -66,15 +75,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string, firstName = "", lastName = "") => {
-    const res = await fetch(`${API_BASE}/api/auth/register/`, {
+    const url = buildApiUrl("/api/v1/auth/register/");
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, first_name: firstName, last_name: lastName }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}. Please check backend service logs.`);
+      }
+    }
+
     if (!res.ok) {
-      throw new Error(data.error || "Registration failed");
+      throw new Error(data.error || data.detail || data.message || `Registration failed (${res.status})`);
     }
 
     localStorage.setItem("dcs_access_token", data.access);
@@ -90,7 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const refreshToken = localStorage.getItem("dcs_refresh_token");
       if (refreshToken) {
-        fetch(`${API_BASE}/api/auth/logout/`, {
+        const url = buildApiUrl("/api/v1/auth/logout/");
+        fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh: refreshToken }),
