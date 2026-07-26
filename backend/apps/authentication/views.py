@@ -8,9 +8,11 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 import environ
+import logging
 
 User = get_user_model()
 env = environ.Env()
+logger = logging.getLogger(__name__)
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -50,7 +52,8 @@ class RegisterView(APIView):
                 }
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
-            return Response({'error': f"Failed to register user: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception(f"Error registering user {email}: {str(e)}")
+            return Response({'error': f"Failed to register user account: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -149,4 +152,3 @@ class GoogleLoginView(APIView):
 
         except ValueError as e:
             return Response({'error': 'Invalid token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
