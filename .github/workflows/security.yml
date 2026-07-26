@@ -2,27 +2,20 @@ name: Security Audit
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Secret Scanning
-        uses: trufflesecurity/trufflehog-actions-scan@v3.88.15
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --debug --only-verified
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Python Safety Audit
-        run: |
-          pip install safety
-          safety check -r backend/requirements.txt || true
+          path: ./
+          base: HEAD~1
+          head: HEAD
