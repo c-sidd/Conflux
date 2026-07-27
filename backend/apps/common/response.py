@@ -5,6 +5,16 @@ from rest_framework import status
 class ErrorCode:
     AUTH_INVALID = "AUTH_INVALID"
     AUTH_EXPIRED = "AUTH_EXPIRED"
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    EMAIL_EXISTS = "EMAIL_EXISTS"
+    WEAK_PASSWORD = "WEAK_PASSWORD"
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    TOKEN_INVALID = "TOKEN_INVALID"
+    TOKEN_ALREADY_USED = "TOKEN_ALREADY_USED"
+    SESSION_REVOKED = "SESSION_REVOKED"
+    UNVERIFIED_EMAIL = "UNVERIFIED_EMAIL"
+    RATE_LIMITED = "RATE_LIMITED"
+    
     FILE_NOT_FOUND = "FILE_NOT_FOUND"
     FOLDER_NOT_FOUND = "FOLDER_NOT_FOUND"
     UPLOAD_FAILED = "UPLOAD_FAILED"
@@ -36,7 +46,7 @@ def api_error(message: str, code: str = ErrorCode.INTERNAL_ERROR, details: dict 
     Returns a standardized API error response payload:
     {
         "success": false,
-        "code": "FILE_NOT_FOUND",
+        "code": "TOKEN_EXPIRED",
         "message": "Human readable message",
         "details": {}
     }

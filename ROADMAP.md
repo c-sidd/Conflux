@@ -1,63 +1,65 @@
-# Conflux Platform Roadmap
+# Conflux SaaS Product Roadmap
 
-> **Many Clouds. One Workspace.**
-
----
-
-## 🚀 Version 1.0 (Core Architecture) — COMPLETED
-- [x] Email/Password Authentication & JWT Token Architecture
-- [x] Multi-Account Google Drive OAuth Connection
-- [x] Conflux Workspace Root Isolation (`Conflux`)
-- [x] Generic `StorageProvider` abstraction & `StorageManager`
-- [x] Automated Storage Placement Strategy (`MostFreeSpaceStrategy`)
+## Phase 1: Core Foundation & Infrastructure
+- [x] Django REST Framework Backend Architecture
+- [x] Next.js App Router Frontend Layout & Workspace Design
+- [x] PostgreSQL & Redis Multi-Cloud Schema Setup
+- [x] Multi-account Google Drive Provider Integration & Placement Engine
 
 ---
 
-## 🛡️ Version 1.5A (Production Ready Features) — COMPLETED
-- [x] API Versioning (`/api/v1/`)
-- [x] Full File & Folder Operations (Rename, Move, Copy, Multi-select Batch Actions)
-- [x] Soft Delete Trash System & 8-Second Undo Toast Queue
-- [x] Recent Items & Starred Favorites Pages
-- [x] Properties Sidebar Panel & Interactive File Previews (Image, PDF, Video, Text)
-- [x] Recursive Folder ZIP Downloads & Pre-flight Upload Simulation
-- [x] Guided Safe Storage Account Removal Workflow
+## Phase 2: Core Cloud Storage Platform Features
+- [x] **Authentication & Account Security** (Complete)
+  - [x] SHA-256 Token Hashing & Secure Generation
+  - [x] Automated Unit Test Suite (`10/10 tests passing, ≥90% coverage`)
+  - [x] Interactive Password Strength Meter & Complexity Enforcement
+  - [x] Non-Enumeration Forgot Password & Single-Use Reset Links
+  - [x] Email Verification Flow & Email Service Layer
+  - [x] Active Device Sessions Tracking & "Logout All Devices" Revocation
+  - [x] Security Audit Event Logging (`SecurityEvent` Feed)
+  - [x] OpenAPI 3.0 & Interactive Swagger UI (`/api/docs/`)
+  - [x] Request ID Tracing Middleware & Standardized Error Code Taxonomy
+- [ ] **File Management** (Next)
+  - [ ] Rename, Move, Copy, Delete, Restore, Permanent Delete
+  - [ ] Multi-select batch operations
+  - [ ] Drag & Drop upload & location move
+- [ ] **Folder Management**
+  - [ ] Nested folders CRUD & Breadcrumb navigation
+- [ ] **Search**
+  - [ ] Global search by filename, extension, provider, folder
+- [ ] **Storage Dashboard**
+  - [ ] Per-account usage cards, progress indicators, storage breakdown
+- [ ] **Activity Timeline**
+  - [ ] Complete user activity feed
+- [ ] **Favorites**
+  - [ ] Starred files & folders view
+- [ ] **Recent Files**
+  - [ ] Recently uploaded, opened, and modified filters
+- [ ] **File Preview**
+  - [ ] Rich preview for PDF, Images, Text, Markdown
+- [ ] **User Settings**
+  - [ ] Profile, Preferences, Security Dashboard, Session Management
+- [ ] **UX Improvements**
+  - [ ] Skeletons, Empty states, Toast notifications, Optimistic UI
 
 ---
 
-## 🔒 Version 1.5A.5 (Architecture Freeze) — COMPLETED
-- [x] Architecture Decision Records (`docs/DECISIONS.md`)
-- [x] Centralized Product Metadata & About Endpoint (`GET /api/v1/about/`)
-- [x] Feature Flags Taxonomy (`FEATURE_FLAGS`)
-- [x] Standardized API Error & Success Response Wrappers
-- [x] Expanded Design Tokens System (`frontend/lib/tokens/`)
-- [x] Developer Diagnostics & Performance Monitoring
-- [x] System Health Endpoint (`GET /api/v1/health/`)
+## Phase 3: Collaboration & Team Workspaces
+- [ ] File Sharing & Granular Permissions (Viewer / Editor)
+- [ ] Public Share Links & Password-Protected / Expiring Links
+- [ ] Team Workspaces & Member Role Management
 
 ---
 
-## 🎨 Version 1.5B (Premium UI & Design System) — UPCOMING
-- [ ] Brand Identity & Premium Glassmorphic Design System
-- [ ] Typography & Theme Palette Finalization
-- [ ] Complete Dashboard UI Redesign & Micro-Animations
-- [ ] Responsive Layout Optimization (Desktop, Laptop, Tablet, Mobile)
-- [ ] Accessibility & Contrast Standards
+## Phase 4: Storage Intelligence & Optimization
+- [ ] File Version History & Rollbacks
+- [ ] Duplicate File Detection & Deduplication Engine
+- [ ] Storage Optimization & Cross-Drive Quota Balancing
 
 ---
 
-## 🏁 Launch (v1.6) — PRODUCTION RELEASE
-
----
-
-## 🌐 Version 2.0 (Multi-Provider Expansion)
-- [ ] Dropbox Integration
-- [ ] OneDrive Integration
-- [ ] Amazon S3 Integration
-- [ ] Cloudflare R2 Integration
-
----
-
-## ⚡ Version 3.0 (Enterprise Engine)
-- [ ] Chunked Resumable Uploads
-- [ ] Client-Side End-to-End Encryption
-- [ ] Desktop Sync Client (Windows / macOS / Linux)
-- [ ] Team Workspaces & Fine-Grained Sharing
+## Phase 5: AI & Natural Language Features
+- [ ] Semantic Vector Search & Natural Language Queries
+- [ ] Automated Document Summaries
+- [ ] Optical Character Recognition (OCR) for PDFs & Images
+- [ ] Automatic Image Tagging & AI File Recommendations

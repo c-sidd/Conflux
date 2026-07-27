@@ -13,4 +13,5 @@ google-auth==2.56.2
 google-auth-oauthlib==1.4.0
 google-auth-httplib2==0.4.0
 gunicorn==23.0.0
-uvicorn==0.34.0
+drf-spectacular==0.28.0
+

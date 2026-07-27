@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from apps.common.response import api_error, ErrorCode
 
 from apps.authentication.serializers import (
     RegisterSerializer, LoginSerializer, ForgotPasswordSerializer,
@@ -34,7 +35,16 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            err_msg = "Validation failed for registration input."
+            code = ErrorCode.VALIDATION_ERROR
+            if 'email' in serializer.errors and any('exists' in str(e) for e in serializer.errors['email']):
+                code = ErrorCode.EMAIL_EXISTS
+                err_msg = "An account with this email address already exists."
+            elif 'password' in serializer.errors:
+                code = ErrorCode.WEAK_PASSWORD
+                err_msg = serializer.errors['password'][0] if isinstance(serializer.errors['password'], list) else "Password complexity requirements not met."
+
+            return api_error(message=err_msg, code=code, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         success, data_or_err, user = AuthService.register_user(
             email=serializer.validated_data['email'],
@@ -46,7 +56,8 @@ class RegisterView(APIView):
         )
 
         if not success:
-            return Response({'success': False, 'errors': data_or_err}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.EMAIL_EXISTS if 'email' in data_or_err else ErrorCode.VALIDATION_ERROR
+            return api_error(message="Registration failed.", code=code, details=data_or_err, status_code=status.HTTP_400_BAD_REQUEST)
 
         return Response(data_or_err, status=status.HTTP_201_CREATED)
 
@@ -57,7 +68,7 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="Email and password are required.", code=ErrorCode.VALIDATION_ERROR, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         success, data_or_err, user = AuthService.login_user(
             email=serializer.validated_data['email'],
@@ -67,7 +78,7 @@ class LoginView(APIView):
         )
 
         if not success:
-            return Response({'success': False, 'errors': data_or_err}, status=status.HTTP_401_UNAUTHORIZED)
+            return api_error(message="Invalid email address or password.", code=ErrorCode.INVALID_CREDENTIALS, status_code=status.HTTP_401_UNAUTHORIZED)
 
         return Response(data_or_err, status=status.HTTP_200_OK)
 
@@ -78,7 +89,7 @@ class ForgotPasswordView(APIView):
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="Please provide a valid email address.", code=ErrorCode.VALIDATION_ERROR, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         PasswordResetService.initiate_password_reset(
             email=serializer.validated_data['email'],
@@ -86,7 +97,6 @@ class ForgotPasswordView(APIView):
             request=request
         )
 
-        # Uniform non-enumerated success message
         return Response({
             'success': True,
             'message': 'If an account with that email address exists, password reset instructions have been sent.'
@@ -99,11 +109,12 @@ class VerifyResetTokenView(APIView):
     def post(self, request):
         serializer = VerifyResetTokenSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="Reset token is required.", code=ErrorCode.VALIDATION_ERROR, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         is_valid, err_msg, token_obj = PasswordResetService.verify_reset_token(serializer.validated_data['token'])
         if not is_valid:
-            return Response({'success': False, 'message': err_msg}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.TOKEN_EXPIRED if 'expired' in err_msg.lower() else (ErrorCode.TOKEN_ALREADY_USED if 'used' in err_msg.lower() else ErrorCode.TOKEN_INVALID)
+            return api_error(message=err_msg, code=code, status_code=status.HTTP_400_BAD_REQUEST)
 
         return Response({'success': True, 'message': 'Token is valid.'}, status=status.HTTP_200_OK)
 
@@ -114,7 +125,8 @@ class ResetPasswordView(APIView):
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.WEAK_PASSWORD if 'new_password' in serializer.errors else ErrorCode.VALIDATION_ERROR
+            return api_error(message="Password reset validation failed.", code=code, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         success, msg = PasswordResetService.execute_password_reset(
             raw_token=serializer.validated_data['token'],
@@ -123,7 +135,8 @@ class ResetPasswordView(APIView):
         )
 
         if not success:
-            return Response({'success': False, 'message': msg}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.TOKEN_EXPIRED if 'expired' in msg.lower() else (ErrorCode.TOKEN_ALREADY_USED if 'used' in msg.lower() else ErrorCode.TOKEN_INVALID)
+            return api_error(message=msg, code=code, status_code=status.HTTP_400_BAD_REQUEST)
 
         return Response({'success': True, 'message': msg}, status=status.HTTP_200_OK)
 
@@ -133,7 +146,8 @@ class ChangePasswordView(APIView):
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.WEAK_PASSWORD if 'new_password' in serializer.errors else ErrorCode.VALIDATION_ERROR
+            return api_error(message="Password change validation failed.", code=code, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         success, msg = AuthService.change_password(
             user=request.user,
@@ -143,7 +157,7 @@ class ChangePasswordView(APIView):
         )
 
         if not success:
-            return Response({'success': False, 'message': msg}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message=msg, code=ErrorCode.INVALID_CREDENTIALS, status_code=status.HTTP_400_BAD_REQUEST)
 
         return Response({'success': True, 'message': msg}, status=status.HTTP_200_OK)
 
@@ -154,7 +168,7 @@ class VerifyEmailView(APIView):
     def post(self, request):
         serializer = VerifyEmailSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="Verification token is required.", code=ErrorCode.VALIDATION_ERROR, details=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
         success, msg = VerificationService.verify_email_token(
             raw_token=serializer.validated_data['token'],
@@ -162,7 +176,8 @@ class VerifyEmailView(APIView):
         )
 
         if not success:
-            return Response({'success': False, 'message': msg}, status=status.HTTP_400_BAD_REQUEST)
+            code = ErrorCode.TOKEN_EXPIRED if 'expired' in msg.lower() else (ErrorCode.TOKEN_ALREADY_USED if 'used' in msg.lower() else ErrorCode.TOKEN_INVALID)
+            return api_error(message=msg, code=code, status_code=status.HTTP_400_BAD_REQUEST)
 
         return Response({'success': True, 'message': msg}, status=status.HTTP_200_OK)
 
@@ -218,7 +233,7 @@ class RevokeSessionByIdView(APIView):
     def post(self, request, session_id):
         success = SessionService.revoke_session_by_id(user=request.user, session_id=session_id, request=request)
         if not success:
-            return Response({'success': False, 'message': 'Session not found or already revoked.'}, status=status.HTTP_404_NOT_FOUND)
+            return api_error(message="Session not found or already revoked.", code=ErrorCode.VALIDATION_ERROR, status_code=status.HTTP_404_NOT_FOUND)
         return Response({'success': True, 'message': 'Session revoked.'}, status=status.HTTP_200_OK)
 
 class SecurityDashboardView(APIView):
@@ -236,7 +251,7 @@ class SecurityDashboardView(APIView):
             'is_verified': user.is_verified,
             'email_verified_at': user.email_verified_at,
             'last_password_change': user.last_password_change,
-            'mfa_enabled': False,  # Reserved Phase 4 extension placeholder
+            'mfa_enabled': False,
             'active_devices_count': active_sessions_count,
             'last_login_at': last_login_event.timestamp if last_login_event else None,
             'recent_events': SecurityEventSerializer(recent_events, many=True).data
@@ -280,12 +295,11 @@ class GoogleLoginView(APIView):
     def post(self, request):
         token = request.data.get('id_token')
         if not token:
-            return Response({'error': 'id_token is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="id_token is required", code=ErrorCode.VALIDATION_ERROR, status_code=status.HTTP_400_BAD_REQUEST)
 
         try:
             from google.oauth2 import id_token
             from google.auth.transport import requests
-            from django.conf import settings
             import environ
 
             env = environ.Env()
@@ -296,6 +310,8 @@ class GoogleLoginView(APIView):
             first_name = idinfo.get('given_name', '')
             last_name = idinfo.get('family_name', '')
 
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
             user, created = User.objects.get_or_create(email=email, defaults={
                 'username': email,
                 'first_name': first_name,
@@ -303,6 +319,7 @@ class GoogleLoginView(APIView):
                 'is_verified': True
             })
 
+            from rest_framework_simplejwt.tokens import RefreshToken
             refresh = RefreshToken.for_user(user)
             refresh_str = str(refresh)
             access_str = str(refresh.access_token)
@@ -323,4 +340,4 @@ class GoogleLoginView(APIView):
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({'error': 'Invalid token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(message="Invalid Google OAuth token.", code=ErrorCode.AUTH_INVALID, details={'details': str(e)}, status_code=status.HTTP_400_BAD_REQUEST)

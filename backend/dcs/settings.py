@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'drf_spectacular',
     'apps.accounts',
     'apps.authentication',
     'apps.storage',
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'apps.common.middleware.RequestIDMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -119,6 +121,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
@@ -135,6 +138,13 @@ REST_FRAMEWORK = {
         'resend_verification': '5/hour',
         'revoke_sessions': '5/hour',
     }
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Conflux Multi-Cloud Unified Storage API',
+    'DESCRIPTION': 'OpenAPI 3.0 specification for Conflux backend API endpoints including Authentication, Virtual Filesystem, Storage Accounts, and Security Dashboard.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 SIMPLE_JWT = {
