@@ -20,5 +20,6 @@ EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/backend
+ENV PORT=8000
 
 CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 4 --timeout 120 dcs.wsgi:application"]
