@@ -74,7 +74,10 @@ WSGI_APPLICATION = 'dcs.wsgi.application'
 
 # Database Configuration
 db_config = env.db('DATABASE_URL')
-if 'OPTIONS' in db_config and 'schema' in db_config['OPTIONS']:
+if 'OPTIONS' not in db_config:
+    db_config['OPTIONS'] = {}
+db_config['OPTIONS']['connect_timeout'] = 10
+if 'schema' in db_config['OPTIONS']:
     del db_config['OPTIONS']['schema']
 
 DATABASES = {
