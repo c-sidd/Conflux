@@ -1,7 +1,7 @@
 import React from "react";
 import { useExplorer } from "./ExplorerContext";
 import { API_BASE_URL } from "@/api/client";
-import { Folder, FileText, Image as ImageIcon, Film, Archive, Star, HardDrive, Download, MoreVertical } from "lucide-react";
+import { Folder, FileText, Star, HardDrive, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 export function ExplorerGrid() {
@@ -9,6 +9,8 @@ export function ExplorerGrid() {
     files, folders, currentFolderId, selectedIds, toggleSelection,
     setCurrentFolderId, toggleFavorite, searchQuery, filter
   } = useExplorer();
+
+  const token = localStorage.getItem("conflux_access_token") || "";
 
   let filteredFolders = folders.filter((f) => f.parent === currentFolderId && !f.is_trashed);
   let filteredFiles = files.filter((f) => f.folder === currentFolderId && !f.is_trashed);
@@ -62,7 +64,7 @@ export function ExplorerGrid() {
                       <span className="text-xs font-semibold text-slate-800 truncate">{folder.name}</span>
                     </div>
                     <a
-                      href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/`}
+                      href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/${token ? `?token=${token}` : ""}`}
                       onClick={(e) => e.stopPropagation()}
                       download
                       title="Download Folder ZIP"
@@ -124,7 +126,7 @@ export function ExplorerGrid() {
                       {file.storage_account?.nickname || "Google Drive"}
                     </span>
                     <a
-                      href={`${API_BASE_URL}/api/v1/files/${file.id}/download/`}
+                      href={`${API_BASE_URL}/api/v1/files/${file.id}/download/${token ? `?token=${token}` : ""}`}
                       onClick={(e) => e.stopPropagation()}
                       download
                       title="Download File"

@@ -18,6 +18,8 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
     setCurrentFolderId, toggleFavorite, searchQuery, filter
   } = useExplorer();
 
+  const token = localStorage.getItem("conflux_access_token") || "";
+
   let filteredFolders = folders.filter((f) => f.parent === currentFolderId && !f.is_trashed);
   let filteredFiles = files.filter((f) => f.folder === currentFolderId && !f.is_trashed);
 
@@ -111,7 +113,7 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                       <td className="py-2 px-4 text-[#94A3B8] font-mono">—</td>
                       <td className="py-2 px-4 text-right">
                         <a
-                          href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/`}
+                          href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/${token ? `?token=${token}` : ""}`}
                           onClick={(e) => e.stopPropagation()}
                           download
                           title="Download Folder ZIP"
@@ -177,7 +179,7 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                             <Star className="w-4 h-4 fill-current" />
                           </button>
                           <a
-                            href={`${API_BASE_URL}/api/v1/files/${file.id}/download/`}
+                            href={`${API_BASE_URL}/api/v1/files/${file.id}/download/${token ? `?token=${token}` : ""}`}
                             onClick={(e) => e.stopPropagation()}
                             download
                             title="Download File"

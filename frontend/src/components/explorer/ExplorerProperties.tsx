@@ -1,6 +1,6 @@
 import React from "react";
 import { API_BASE_URL } from "@/api/client";
-import { X, FileText, Folder, HardDrive, Calendar, Database, Hash, Download, Trash2, ExternalLink } from "lucide-react";
+import { X, FileText, Folder, HardDrive, Calendar, Database, Hash, Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PropertiesProps {
@@ -13,6 +13,8 @@ export function ExplorerProperties({ item, onClose, onDelete }: PropertiesProps)
   const isFile = item.type === "file";
   const data = item.data;
 
+  const token = localStorage.getItem("conflux_access_token") || "";
+
   const formatSize = (bytes: number) => {
     if (!bytes || bytes === 0) return "—";
     const k = 1024;
@@ -22,8 +24,8 @@ export function ExplorerProperties({ item, onClose, onDelete }: PropertiesProps)
   };
 
   const downloadUrl = isFile
-    ? `${API_BASE_URL}/api/v1/files/${data.id}/download/`
-    : `${API_BASE_URL}/api/v1/folders/${data.id}/download-zip/`;
+    ? `${API_BASE_URL}/api/v1/files/${data.id}/download/${token ? `?token=${token}` : ""}`
+    : `${API_BASE_URL}/api/v1/folders/${data.id}/download-zip/${token ? `?token=${token}` : ""}`;
 
   return (
     <div className="w-80 bg-white dark:bg-[#22223B] border-l border-slate-200 dark:border-[#4A4E69]/40 p-5 space-y-5 text-xs text-[#22223B] dark:text-[#F2E9E4] shrink-0 overflow-y-auto select-none">
