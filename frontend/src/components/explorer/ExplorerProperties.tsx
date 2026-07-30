@@ -1,7 +1,8 @@
 import React from "react";
 import { API_BASE_URL } from "@/api/client";
-import { X, FileText, Folder, HardDrive, Calendar, Database, Hash, Download, Trash2 } from "lucide-react";
+import { X, FileText, Folder, HardDrive, Calendar, Database, Hash, Download, Trash2, Mail, CheckCircle2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface PropertiesProps {
   item: { type: "file" | "folder"; data: any };
@@ -27,24 +28,28 @@ export function ExplorerProperties({ item, onClose, onDelete }: PropertiesProps)
     ? `${API_BASE_URL}/api/v1/files/${data.id}/download/${token ? `?token=${token}` : ""}`
     : `${API_BASE_URL}/api/v1/folders/${data.id}/download-zip/${token ? `?token=${token}` : ""}`;
 
+  const handleDownloadClick = () => {
+    toast.info(isFile ? "Preparing file download..." : "Generating folder ZIP archive...");
+  };
+
   return (
-    <div className="w-80 bg-white dark:bg-[#22223B] border-l border-slate-200 dark:border-[#4A4E69]/40 p-5 space-y-5 text-xs text-[#22223B] dark:text-[#F2E9E4] shrink-0 overflow-y-auto select-none">
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#4A4E69]/40 pb-3">
-        <h3 className="font-bold text-[#22223B] dark:text-white text-sm">Item Details</h3>
-        <button onClick={onClose} className="p-1 text-[#9A8C98] hover:text-[#22223B] dark:hover:text-white">
+    <div className="w-80 bg-white dark:bg-[#22223B] border-l border-[#E2E8F0] dark:border-[#4A4E69]/40 p-5 space-y-5 text-xs text-[#0F172A] dark:text-[#F2E9E4] shrink-0 overflow-y-auto select-none">
+      <div className="flex items-center justify-between border-b border-[#E2E8F0] dark:border-[#4A4E69]/40 pb-3">
+        <h3 className="font-bold text-[#0F172A] dark:text-white text-sm">Item Details & Storage</h3>
+        <button onClick={onClose} className="p-1 text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white">
           <X className="w-4 h-4" />
         </button>
       </div>
 
       <div className="text-center space-y-3 py-2">
-        <div className="w-14 h-14 rounded-2xl bg-[#4A4E69]/20 border border-[#4A4E69]/40 text-[#4A4E69] dark:text-[#F2E9E4] flex items-center justify-center mx-auto">
-          {isFile ? <FileText className="w-7 h-7 text-[#4A4E69] dark:text-[#9A8C98]" /> : <Folder className="w-7 h-7 text-amber-500" />}
+        <div className="w-14 h-14 rounded-2xl bg-[#DBEAFE] dark:bg-[#4A4E69]/20 border border-[#2563EB]/20 text-[#2563EB] dark:text-[#F2E9E4] flex items-center justify-center mx-auto shadow-2xs">
+          {isFile ? <FileText className="w-7 h-7 text-[#2563EB]" /> : <Folder className="w-7 h-7 text-amber-500" />}
         </div>
         <div>
-          <h4 className="font-bold text-[#22223B] dark:text-white text-xs truncate max-w-full" title={data.name}>
+          <h4 className="font-bold text-[#0F172A] dark:text-white text-xs truncate max-w-full" title={data.name}>
             {data.name}
           </h4>
-          <p className="text-[11px] text-[#9A8C98] mt-0.5">{isFile ? data.mime_type || "Document File" : "Virtual Folder"}</p>
+          <p className="text-[11px] text-[#475569] dark:text-[#C9ADA7] mt-0.5">{isFile ? data.mime_type || "Document File" : "Virtual Folder"}</p>
         </div>
       </div>
 
@@ -52,7 +57,8 @@ export function ExplorerProperties({ item, onClose, onDelete }: PropertiesProps)
         <a
           href={downloadUrl}
           download
-          className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#4A4E69] hover:bg-[#9A8C98] text-white text-xs font-bold py-2 rounded-xl transition-colors shadow-2xs"
+          onClick={handleDownloadClick}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold py-2 rounded-xl transition-colors shadow-2xs"
         >
           <Download className="w-3.5 h-3.5" /> Download
         </a>
@@ -63,38 +69,50 @@ export function ExplorerProperties({ item, onClose, onDelete }: PropertiesProps)
         )}
       </div>
 
-      <div className="space-y-4 divide-y divide-slate-100 dark:divide-[#4A4E69]/30">
+      <div className="space-y-4 divide-y divide-[#E2E8F0] dark:divide-[#4A4E69]/30">
+        {/* Storage Account Transparency Details */}
         <div className="pt-3 space-y-2">
-          <span className="text-[10px] font-bold text-[#9A8C98] uppercase tracking-wider">Storage Metadata</span>
+          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">Cloud Storage Location</span>
+          
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[#6B7280] dark:text-[#C9ADA7]"><Database className="w-3.5 h-3.5" /> Size:</span>
-            <span className="font-mono font-bold">{isFile ? formatSize(data.size) : "—"}</span>
+            <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><HardDrive className="w-3.5 h-3.5 text-[#2563EB]" /> Provider:</span>
+            <span className="font-bold text-[#0F172A] dark:text-white">Google Drive</span>
           </div>
-          <div className="flex items-center justify-between pt-1">
-            <span className="flex items-center gap-1.5 text-[#6B7280] dark:text-[#C9ADA7]"><HardDrive className="w-3.5 h-3.5" /> Account:</span>
-            <span className="font-semibold">{data.storage_account?.nickname || "Google Drive"}</span>
+
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><Mail className="w-3.5 h-3.5 text-[#2563EB]" /> Google Account:</span>
+            <span className="font-semibold text-[#0F172A] dark:text-white truncate max-w-[130px]" title={data.storage_account?.provider_email}>
+              {data.storage_account?.provider_email || "Connected Account"}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Account Name:</span>
+            <span className="font-semibold">{data.storage_account?.nickname || "Primary Drive"}</span>
           </div>
         </div>
 
+        {/* Technical File Metadata */}
         <div className="pt-3 space-y-2">
-          <span className="text-[10px] font-bold text-[#9A8C98] uppercase tracking-wider">Technical Attributes</span>
+          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">Technical Attributes</span>
           <div className="flex items-center justify-between">
-            <span className="text-[#6B7280] dark:text-[#C9ADA7]">Type:</span>
-            <span className="font-mono text-[11px] truncate max-w-[140px]">{data.mime_type || (isFile ? "File" : "Folder")}</span>
+            <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><Database className="w-3.5 h-3.5" /> File Size:</span>
+            <span className="font-mono font-bold text-[#0F172A] dark:text-white">{isFile ? formatSize(data.size) : "—"}</span>
           </div>
           {data.provider_file_id && (
             <div className="flex items-center justify-between pt-1">
-              <span className="flex items-center gap-1.5 text-[#6B7280] dark:text-[#C9ADA7]"><Hash className="w-3.5 h-3.5" /> Provider ID:</span>
+              <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><Hash className="w-3.5 h-3.5" /> Drive ID:</span>
               <span className="font-mono text-[10px] truncate max-w-[130px]">{data.provider_file_id}</span>
             </div>
           )}
         </div>
 
+        {/* Timestamps */}
         <div className="pt-3 space-y-2">
-          <span className="text-[10px] font-bold text-[#9A8C98] uppercase tracking-wider">Dates</span>
+          <span className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">Timestamps</span>
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[#6B7280] dark:text-[#C9ADA7]"><Calendar className="w-3.5 h-3.5" /> Last Modified:</span>
-            <span>{new Date(data.updated_at).toLocaleDateString()}</span>
+            <span className="flex items-center gap-1.5 text-[#475569] dark:text-[#C9ADA7]"><Calendar className="w-3.5 h-3.5" /> Modified:</span>
+            <span className="font-medium text-[#0F172A] dark:text-white">{new Date(data.updated_at).toLocaleDateString()}</span>
           </div>
         </div>
       </div>
