@@ -27,19 +27,19 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
   ];
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-white dark:bg-[#111111] border-b border-[#F3F4F6] dark:border-[#2B2B2B] transition-colors">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-white border-b border-[#E2E8F0] transition-colors">
       <div className="flex flex-1 items-center gap-2">
-        <Button onClick={onNewFolderClick} className="bg-[#F26A21] hover:bg-[#C94F0C] text-white font-bold text-xs rounded-xl shadow-2xs">
+        <Button onClick={onNewFolderClick} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs rounded-xl shadow-2xs">
           <Plus className="w-4 h-4 mr-1" /> New Folder
         </Button>
 
         <div className="relative flex-1 max-w-xs">
-          <Search className="w-3.5 h-3.5 text-[#6B7280] absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-2.5" />
           <Input
             placeholder="Search drive..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 bg-[#F3F4F6] dark:bg-[#2B2B2B] border border-slate-200 dark:border-slate-700 text-xs h-8"
+            className="pl-8 bg-[#F8FAFC] border border-[#E2E8F0] text-xs h-8 text-[#0F172A] focus:border-[#2563EB]"
           />
         </div>
 
@@ -53,8 +53,8 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
                 onClick={() => setFilter(f.type)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   active
-                    ? "bg-[#F26A21]/15 text-[#F26A21] border border-[#F26A21]/30"
-                    : "text-[#6B7280] dark:text-slate-300 hover:bg-[#F3F4F6] dark:hover:bg-[#2B2B2B]"
+                    ? "bg-[#DBEAFE] text-[#2563EB] border border-[#2563EB]/30 font-bold"
+                    : "text-[#475569] hover:bg-[#EFF6FF] hover:text-[#2563EB]"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -67,8 +67,8 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
 
       <div className="flex items-center gap-2">
         {/* Sort Selector */}
-        <div className="flex items-center gap-1 text-xs text-[#111111] dark:text-slate-300 bg-[#F3F4F6] dark:bg-[#2B2B2B] border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1">
-          <ArrowUpDown className="w-3.5 h-3.5 text-[#6B7280]" />
+        <div className="flex items-center gap-1 text-xs text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1">
+          <ArrowUpDown className="w-3.5 h-3.5 text-[#94A3B8]" />
           <select
             value={sortField}
             onChange={(e) => setSortField(e.target.value as SortField)}
@@ -81,26 +81,26 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-xl p-0.5 bg-[#F3F4F6] dark:bg-[#2B2B2B]">
+        <div className="flex items-center border border-[#E2E8F0] rounded-xl p-0.5 bg-[#F8FAFC]">
           <button
             onClick={() => setViewMode("list")}
             title="List View"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "list" ? "bg-white dark:bg-[#111111] text-[#F26A21] shadow-2xs" : "text-[#6B7280]"}`}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "list" ? "bg-white text-[#2563EB] shadow-2xs font-bold" : "text-[#94A3B8]"}`}
           >
             <List className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewMode("grid")}
             title="Grid View"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "grid" ? "bg-white dark:bg-[#111111] text-[#F26A21] shadow-2xs" : "text-[#6B7280]"}`}
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "grid" ? "bg-white text-[#2563EB] shadow-2xs font-bold" : "text-[#94A3B8]"}`}
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
         </div>
 
         {/* Upload Button */}
-        <label className="cursor-pointer inline-flex items-center justify-center rounded-xl text-xs font-semibold bg-[#111111] hover:bg-[#2B2B2B] text-white px-3 py-1.5 transition-colors shadow-2xs border border-slate-800">
-          <Upload className="w-3.5 h-3.5 mr-1.5 text-[#F26A21]" /> Upload File
+        <label className="cursor-pointer inline-flex items-center justify-center rounded-xl text-xs font-bold bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-3.5 py-1.5 transition-colors shadow-2xs">
+          <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload File
           <input type="file" multiple onChange={handleFileInput} className="hidden" />
         </label>
       </div>

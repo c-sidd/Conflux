@@ -2,9 +2,9 @@ import React from "react";
 import { useExplorer } from "./ExplorerContext";
 import { API_BASE_URL } from "@/api/client";
 import {
-  Folder, FileText, Image as ImageIcon, Film, FileSpreadsheet, Star, HardDrive, Download, MoreVertical
+  Folder, FileText, Image as ImageIcon, Film, FileSpreadsheet, Star, Download
 } from "lucide-react";
-import { FileItem, FolderItem } from "@/types";
+import { FileItem } from "@/types";
 
 interface ExplorerListProps {
   onOpenRename?: (item: { type: "file" | "folder"; data: any }) => void;
@@ -47,22 +47,22 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
   };
 
   const getFileIcon = (mimeType: string) => {
-    if (!mimeType) return <FileText className="w-5 h-5 text-blue-500 shrink-0" />;
+    if (!mimeType) return <FileText className="w-5 h-5 text-[#2563EB] shrink-0" />;
     if (mimeType.startsWith("image/")) return <ImageIcon className="w-5 h-5 text-emerald-500 shrink-0" />;
     if (mimeType.includes("pdf")) return <FileText className="w-5 h-5 text-red-500 shrink-0" />;
     if (mimeType.startsWith("video/")) return <Film className="w-5 h-5 text-purple-500 shrink-0" />;
     if (mimeType.includes("sheet") || mimeType.includes("excel") || mimeType.includes("csv")) {
       return <FileSpreadsheet className="w-5 h-5 text-emerald-600 shrink-0" />;
     }
-    return <FileText className="w-5 h-5 text-blue-500 shrink-0" />;
+    return <FileText className="w-5 h-5 text-[#2563EB] shrink-0" />;
   };
 
   return (
     <div className="p-4 space-y-6">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-2xs">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden shadow-2xs">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-50/80 dark:bg-slate-950/80 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider h-10">
+            <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#475569] font-bold uppercase text-[10px] tracking-wider h-10">
               <th className="py-2 px-4 w-10 text-center">
                 <span className="sr-only">Select</span>
               </th>
@@ -73,12 +73,12 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
               <th className="py-2 px-4 w-20 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-[#E2E8F0]">
             {/* FOLDERS SECTION */}
             {filteredFolders.length > 0 && (
               <>
-                <tr className="bg-slate-50/50 dark:bg-slate-950/30">
-                  <td colSpan={6} className="py-1.5 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr className="bg-[#F8FAFC]">
+                  <td colSpan={6} className="py-1.5 px-4 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
                     Folders ({filteredFolders.length})
                   </td>
                 </tr>
@@ -90,8 +90,8 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                       key={folder.id}
                       onClick={(e) => toggleSelection(itemKey, e.ctrlKey || e.metaKey)}
                       onDoubleClick={() => setCurrentFolderId(folder.id)}
-                      className={`h-12 hover:bg-[#F8FAFC] dark:hover:bg-slate-800/60 transition-colors cursor-pointer select-none border-b border-slate-100 dark:border-slate-800/60 ${
-                        isSelected ? "bg-[#E8F0FE] dark:bg-blue-950/40 font-semibold" : ""
+                      className={`h-12 hover:bg-[#F8FAFC] transition-colors cursor-pointer select-none border-b border-[#E2E8F0] ${
+                        isSelected ? "bg-[#DBEAFE] font-bold text-[#2563EB]" : ""
                       }`}
                     >
                       <td className="py-2 px-4 text-center">
@@ -99,23 +99,23 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
-                          className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          className="rounded border-[#E2E8F0] text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
                         />
                       </td>
-                      <td className="py-2 px-4 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-3 h-12">
+                      <td className="py-2 px-4 font-bold text-[#0F172A] flex items-center gap-3 h-12">
                         <Folder className="w-5 h-5 text-amber-500 shrink-0" />
                         <span className="truncate">{folder.name}</span>
                       </td>
-                      <td className="py-2 px-4 text-slate-500 dark:text-slate-400 font-medium">Me</td>
-                      <td className="py-2 px-4 text-slate-500 dark:text-slate-400">{new Date(folder.updated_at).toLocaleDateString()}</td>
-                      <td className="py-2 px-4 text-slate-400 font-mono">—</td>
+                      <td className="py-2 px-4 text-[#475569] font-medium">Me</td>
+                      <td className="py-2 px-4 text-[#475569]">{new Date(folder.updated_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-4 text-[#94A3B8] font-mono">—</td>
                       <td className="py-2 px-4 text-right">
                         <a
                           href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/`}
                           onClick={(e) => e.stopPropagation()}
                           download
                           title="Download Folder ZIP"
-                          className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 inline-block rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700"
+                          className="p-1.5 text-[#94A3B8] hover:text-[#2563EB] inline-block rounded-lg hover:bg-white"
                         >
                           <Download className="w-4 h-4" />
                         </a>
@@ -129,8 +129,8 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
             {/* FILES SECTION */}
             {filteredFiles.length > 0 && (
               <>
-                <tr className="bg-slate-50/50 dark:bg-slate-950/30">
-                  <td colSpan={6} className="py-1.5 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr className="bg-[#F8FAFC]">
+                  <td colSpan={6} className="py-1.5 px-4 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
                     Files ({filteredFiles.length})
                   </td>
                 </tr>
@@ -142,8 +142,8 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                       key={file.id}
                       onClick={(e) => toggleSelection(itemKey, e.ctrlKey || e.metaKey)}
                       onDoubleClick={() => onOpenPreview && onOpenPreview(file)}
-                      className={`h-12 hover:bg-[#F8FAFC] dark:hover:bg-slate-800/60 transition-colors cursor-pointer select-none border-b border-slate-100 dark:border-slate-800/60 ${
-                        isSelected ? "bg-[#E8F0FE] dark:bg-blue-950/40 font-semibold" : ""
+                      className={`h-12 hover:bg-[#F8FAFC] transition-colors cursor-pointer select-none border-b border-[#E2E8F0] ${
+                        isSelected ? "bg-[#DBEAFE] font-bold text-[#2563EB]" : ""
                       }`}
                     >
                       <td className="py-2 px-4 text-center">
@@ -151,18 +151,18 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
-                          className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          className="rounded border-[#E2E8F0] text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
                         />
                       </td>
-                      <td className="py-2 px-4 text-slate-900 dark:text-slate-100 font-medium flex items-center gap-3 h-12">
+                      <td className="py-2 px-4 text-[#0F172A] font-medium flex items-center gap-3 h-12">
                         {getFileIcon(file.mime_type)}
                         <span className="truncate max-w-sm" title={file.name}>
                           {file.name}
                         </span>
                       </td>
-                      <td className="py-2 px-4 text-slate-500 dark:text-slate-400 font-medium">Me</td>
-                      <td className="py-2 px-4 text-slate-500 dark:text-slate-400">{new Date(file.updated_at).toLocaleDateString()}</td>
-                      <td className="py-2 px-4 text-slate-600 dark:text-slate-300 font-mono font-medium">{formatSize(file.size)}</td>
+                      <td className="py-2 px-4 text-[#475569] font-medium">Me</td>
+                      <td className="py-2 px-4 text-[#475569]">{new Date(file.updated_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-4 text-[#0F172A] font-mono font-medium">{formatSize(file.size)}</td>
                       <td className="py-2 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -170,8 +170,8 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                               e.stopPropagation();
                               toggleFavorite(file);
                             }}
-                            className={`p-1.5 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700 ${
-                              file.is_favorite ? "text-amber-400" : "text-slate-300 hover:text-amber-400"
+                            className={`p-1.5 rounded-lg hover:bg-white ${
+                              file.is_favorite ? "text-amber-400" : "text-[#94A3B8] hover:text-amber-400"
                             }`}
                           >
                             <Star className="w-4 h-4 fill-current" />
@@ -181,7 +181,7 @@ export function ExplorerList({ onOpenRename, onOpenProperties, onOpenPreview }: 
                             onClick={(e) => e.stopPropagation()}
                             download
                             title="Download File"
-                            className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700"
+                            className="p-1.5 text-[#94A3B8] hover:text-[#2563EB] rounded-lg hover:bg-white"
                           >
                             <Download className="w-4 h-4" />
                           </a>

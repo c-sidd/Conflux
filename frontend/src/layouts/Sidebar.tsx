@@ -31,16 +31,16 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-[#22223B] border-r border-[#4A4E69]/40 text-[#F2E9E4] flex flex-col justify-between shrink-0 select-none">
+    <aside className="w-64 bg-white border-r border-[#E2E8F0] text-[#0F172A] flex flex-col justify-between shrink-0 select-none">
       <div className="p-4 space-y-6 overflow-y-auto">
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-2">
-          <div className="p-2 bg-[#4A4E69] rounded-xl text-white shadow-md">
+          <div className="p-2 bg-[#2563EB] rounded-xl text-white shadow-md">
             <HardDrive className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-[#F2E9E4] tracking-tight">Conflux Workspace</h1>
-            <p className="text-[10px] text-[#C9ADA7]">Multi-Cloud Storage</p>
+            <h1 className="text-sm font-extrabold text-[#0F172A] tracking-tight">Conflux Workspace</h1>
+            <p className="text-[10px] text-[#475569]">Multi-Cloud Storage</p>
           </div>
         </div>
 
@@ -54,10 +54,10 @@ export function Sidebar() {
                 to={item.to}
                 end={item.to === "/dashboard"}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
                     isActive
-                      ? "bg-[#4A4E69] text-white border border-[#9A8C98]/40 shadow-xs"
-                      : "text-[#C9ADA7] hover:text-white hover:bg-[#4A4E69]/40"
+                      ? "bg-[#DBEAFE] text-[#2563EB] font-bold shadow-2xs"
+                      : "text-[#475569] hover:text-[#2563EB] hover:bg-[#EFF6FF]"
                   }`
                 }
               >
@@ -70,10 +70,10 @@ export function Sidebar() {
 
         {/* Connected Storage Accounts Section */}
         {accounts.length > 0 && (
-          <div className="pt-4 border-t border-[#4A4E69]/40 space-y-3">
-            <div className="flex items-center justify-between px-2 text-[10px] font-bold text-[#9A8C98] uppercase tracking-wider">
+          <div className="pt-4 border-t border-[#E2E8F0] space-y-3">
+            <div className="flex items-center justify-between px-2 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
               <span>Connected Drives ({accounts.length})</span>
-              <NavLink to="/dashboard/storage" className="text-[#C9ADA7] hover:text-white">
+              <NavLink to="/dashboard/storage" className="text-[#2563EB] hover:text-[#1D4ED8]">
                 <Plus className="w-3.5 h-3.5" />
               </NavLink>
             </div>
@@ -82,23 +82,23 @@ export function Sidebar() {
               {accounts.map((acc) => {
                 const percent = acc.total_storage > 0 ? Math.round((acc.used_storage / acc.total_storage) * 100) : 0;
                 return (
-                  <div key={acc.id} className="p-2.5 bg-[#4A4E69]/20 border border-[#4A4E69]/40 rounded-xl space-y-1.5">
+                  <div key={acc.id} className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1.5 hover:border-[#2563EB]/40 transition-colors">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-[#F2E9E4] truncate max-w-[130px]" title={acc.nickname}>
+                      <span className="font-bold text-[#0F172A] truncate max-w-[130px]" title={acc.nickname}>
                         {acc.nickname}
                       </span>
                       <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase ${
-                        acc.health_status === "healthy" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"
+                        acc.health_status === "healthy" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
                       }`}>
                         {acc.health_status === "healthy" ? "OK" : "Sync"}
                       </span>
                     </div>
 
-                    <div className="h-1.5 w-full bg-[#22223B] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#9A8C98] rounded-full" style={{ width: `${percent}%` }} />
+                    <div className="h-1.5 w-full bg-[#E2E8F0] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#2563EB] rounded-full" style={{ width: `${percent}%` }} />
                     </div>
 
-                    <div className="flex justify-between text-[9px] text-[#C9ADA7] font-mono">
+                    <div className="flex justify-between text-[9px] text-[#475569] font-mono">
                       <span>{formatSize(acc.used_storage)} used</span>
                       <span>{percent}%</span>
                     </div>
@@ -110,7 +110,7 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="p-4 border-t border-[#4A4E69]/40 text-[10px] text-[#9A8C98] text-center font-medium">
+      <div className="p-4 border-t border-[#E2E8F0] text-[10px] text-[#94A3B8] text-center font-semibold">
         Conflux v1.0 — Unified Storage
       </div>
     </aside>
