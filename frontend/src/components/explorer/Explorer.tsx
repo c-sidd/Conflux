@@ -14,10 +14,10 @@ import { OnboardingGuide } from "@/components/OnboardingGuide";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
-import { FolderOpen } from "lucide-react";
+import emptyFolderIllustration from "@/assets/illustrations/empty-folder.svg";
 
 function ExplorerContent() {
-  const { viewMode, loading, files, folders, currentFolderId, refreshExplorer, renameItem } = useExplorer();
+  const { viewMode, loading, files, folders, currentFolderId, selectedIds, refreshExplorer, renameItem, deleteSelected } = useExplorer();
 
   const [newFolderModalOpen, setNewFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -33,6 +33,22 @@ function ExplorerContent() {
 
   const filteredFolders = folders.filter((f) => f.parent === currentFolderId && !f.is_trashed);
   const filteredFiles = files.filter((f) => f.folder === currentFolderId && !f.is_trashed);
+
+  // Auto select active properties item if single selection
+  React.useEffect(() => {
+    if (selectedIds.size === 1) {
+      const firstKey = Array.from(selectedIds)[0];
+      const [type, idStr] = firstKey.split("-");
+      const id = parseInt(idStr, 10);
+      if (type === "folder") {
+        const found = folders.find((f) => f.id === id);
+        if (found) setPropertiesTarget({ type: "folder", data: found });
+      } else if (type === "file") {
+        const found = files.find((fi) => fi.id === id);
+        if (found) setPropertiesTarget({ type: "file", data: found });
+      }
+    }
+  }, [selectedIds, files, folders]);
 
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,11 +78,12 @@ function ExplorerContent() {
   return (
     <div
       onContextMenu={(e) => e.preventDefault()}
-      className="flex-1 flex flex-row min-h-0 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden"
+      className="flex-1 flex flex-row min-h-0 bg-slate-50 dark:bg-[#22223B] text-[#22223B] dark:text-[#F2E9E4] overflow-hidden"
     >
       <ExplorerShortcuts />
       <ExplorerDropZone />
 
+      {/* Center Explorer Panel */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <OnboardingGuide />
         <ExplorerToolbar onNewFolderClick={() => setNewFolderModalOpen(true)} />
@@ -74,14 +91,14 @@ function ExplorerContent() {
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-xs text-slate-400">Loading workspace files...</div>
+            <div className="p-8 text-center text-xs text-[#9A8C98]">Loading workspace files...</div>
           ) : filteredFolders.length === 0 && filteredFiles.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-slate-800 text-blue-500 flex items-center justify-center">
-                <FolderOpen className="w-7 h-7" />
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
+              <img src={emptyFolderIllustration} alt="Folder is empty" className="w-44 mx-auto" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Workspace Folder is Empty</h3>
+                <p className="text-xs text-[#9A8C98]">Drag & drop files here or click "New Folder" above to get started.</p>
               </div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Folder is empty</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Drag & drop files here or create subfolders to get started.</p>
             </div>
           ) : viewMode === "grid" ? (
             <div onContextMenu={(e) => e.preventDefault()}>
@@ -105,8 +122,16 @@ function ExplorerContent() {
         <ExplorerFloatingBar />
       </div>
 
+      {/* Right Properties Panel */}
       {propertiesTarget && (
-        <ExplorerProperties item={propertiesTarget} onClose={() => setPropertiesTarget(null)} />
+        <ExplorerProperties
+          item={propertiesTarget}
+          onClose={() => setPropertiesTarget(null)}
+          onDelete={() => {
+            deleteSelected();
+            setPropertiesTarget(null);
+          }}
+        />
       )}
 
       {contextMenu && (
@@ -131,21 +156,21 @@ function ExplorerContent() {
 
       {newFolderModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Create New Folder</h3>
+          <div className="w-full max-w-sm bg-white dark:bg-[#22223B] rounded-2xl p-5 border border-slate-200 dark:border-[#4A4E69]/60 shadow-2xl space-y-4">
+            <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Create New Folder</h3>
             <form onSubmit={handleCreateFolder} className="space-y-3">
               <Input
                 autoFocus
                 placeholder="Folder Name"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+                <Button type="submit" size="sm" className="text-xs bg-[#4A4E69] hover:bg-[#9A8C98] text-white">
                   Create Folder
                 </Button>
               </div>
@@ -156,20 +181,20 @@ function ExplorerContent() {
 
       {renameModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Rename Item</h3>
+          <div className="w-full max-w-sm bg-white dark:bg-[#22223B] rounded-2xl p-5 border border-slate-200 dark:border-[#4A4E69]/60 shadow-2xl space-y-4">
+            <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Rename Item</h3>
             <form onSubmit={handleRenameSubmit} className="space-y-3">
               <Input
                 autoFocus
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setRenameModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+                <Button type="submit" size="sm" className="text-xs bg-[#4A4E69] hover:bg-[#9A8C98] text-white">
                   Save Name
                 </Button>
               </div>
