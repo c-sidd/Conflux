@@ -9,6 +9,7 @@ import { ExplorerProperties } from "./ExplorerProperties";
 import { ExplorerShortcuts } from "./ExplorerShortcuts";
 import { ExplorerDropZone } from "./ExplorerDropZone";
 import { ExplorerContextMenu } from "./ExplorerContextMenu";
+import { ExplorerUploadQueue } from "./ExplorerUploadQueue";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { OnboardingGuide } from "@/components/OnboardingGuide";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +19,11 @@ import { apiClient } from "@/api/client";
 import emptyFolderIllustration from "@/assets/illustrations/empty-folder.svg";
 
 function ExplorerContent() {
-  const { viewMode, loading, files, folders, currentFolderId, selectedIds, refreshExplorer, renameItem, deleteSelected } = useExplorer();
+  const {
+    viewMode, loading, files, folders, currentFolderId, selectedIds,
+    uploadQueue, cancelUpload, retryUpload, clearUploadQueue,
+    refreshExplorer, renameItem, deleteSelected
+  } = useExplorer();
 
   const [newFolderModalOpen, setNewFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -140,6 +145,14 @@ function ExplorerContent() {
         />
       )}
 
+      {/* Upload Queue Monitor */}
+      <ExplorerUploadQueue
+        queue={uploadQueue}
+        onCancel={cancelUpload}
+        onRetry={retryUpload}
+        onClose={clearUploadQueue}
+      />
+
       {contextMenu && (
         <ExplorerContextMenu
           x={contextMenu.x}
@@ -176,7 +189,7 @@ function ExplorerContent() {
                 <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-[#4A4E69] hover:bg-[#9A8C98] text-white">
+                <Button type="submit" size="sm" className="text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
                   Create Folder
                 </Button>
               </div>
@@ -197,10 +210,10 @@ function ExplorerContent() {
                 className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)} className="text-xs">
+                <Button type="button" variant="outline" size="sm" onClick={() => setRenameModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-[#4A4E69] hover:bg-[#9A8C98] text-white">
+                <Button type="submit" size="sm" className="text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
                   Save Name
                 </Button>
               </div>

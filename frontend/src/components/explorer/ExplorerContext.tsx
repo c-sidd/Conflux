@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import { FileItem, FolderItem } from "@/types";
+import { UploadQueueItem } from "./ExplorerUploadQueue";
+import { toast } from "sonner";
 
 export type ViewMode = "grid" | "list";
 export type SortField = "name" | "size" | "updated_at";
@@ -17,6 +19,7 @@ interface ExplorerContextType {
   filter: FilterType;
   searchQuery: string;
   loading: boolean;
+  uploadQueue: UploadQueueItem[];
   setCurrentFolderId: (id: number | null) => void;
   setViewMode: (mode: ViewMode) => void;
   setSortField: (field: SortField) => void;
@@ -26,6 +29,9 @@ interface ExplorerContextType {
   selectAll: () => void;
   clearSelection: () => void;
   uploadFiles: (files: File[]) => Promise<void>;
+  cancelUpload: (id: string) => void;
+  retryUpload: (id: string) => void;
+  clearUploadQueue: () => void;
   deleteSelected: () => Promise<void>;
   toggleFavorite: (file: FileItem) => Promise<void>;
   renameItem: (item: any, newName: string) => Promise<void>;
@@ -42,6 +48,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   const [sortField, setSortField] = useState<SortField>("name");
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
 
   const setViewMode = (mode: ViewMode) => {
     setViewModeState(mode);
@@ -91,20 +98,75 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
 
   const uploadFiles = async (newFiles: File[]) => {
     for (const file of newFiles) {
+      const uploadId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newItem: UploadQueueItem = {
+        id: uploadId,
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        speedMBps: 0,
+        etaSeconds: 0,
+        status: "uploading",
+      };
+
+      setUploadQueue((prev) => [newItem, ...prev]);
+
       const formData = new FormData();
       formData.append("file", file);
       if (currentFolderId) formData.append("folder", currentFolderId.toString());
 
+      const startTime = Date.now();
+
       try {
         await apiClient.post("/api/v1/files/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              const elapsedSeconds = (Date.now() - startTime) / 1000 || 0.1;
+              const speedMBps = progressEvent.loaded / (1024 * 1024 * elapsedSeconds);
+              const remainingBytes = progressEvent.total - progressEvent.loaded;
+              const etaSeconds = Math.max(1, Math.round(remainingBytes / (progressEvent.loaded / elapsedSeconds || 1)));
+
+              setUploadQueue((prev) =>
+                prev.map((q) =>
+                  q.id === uploadId
+                    ? { ...q, progress: percent, speedMBps: parseFloat(speedMBps.toFixed(1)), etaSeconds }
+                    : q
+                )
+              );
+            }
+          },
         });
-      } catch (err) {
-        console.error("Upload error", err);
+
+        setUploadQueue((prev) =>
+          prev.map((q) => (q.id === uploadId ? { ...q, progress: 100, status: "completed" } : q))
+        );
+
+        toast.success(`Uploaded "${file.name}" successfully!`);
+      } catch (err: any) {
+        setUploadQueue((prev) =>
+          prev.map((q) =>
+            q.id === uploadId
+              ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Upload failed" }
+              : q
+          )
+        );
+        toast.error(`Failed to upload "${file.name}"`);
       }
     }
     refreshExplorer();
   };
+
+  const cancelUpload = (id: string) => {
+    setUploadQueue((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const retryUpload = (id: string) => {
+    setUploadQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "uploading", progress: 0 } : q)));
+  };
+
+  const clearUploadQueue = () => setUploadQueue([]);
 
   const deleteSelected = async () => {
     const ids = Array.from(selectedIds);
@@ -162,6 +224,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
         filter,
         searchQuery,
         loading,
+        uploadQueue,
         setCurrentFolderId,
         setViewMode,
         setSortField,
@@ -171,6 +234,9 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
         selectAll,
         clearSelection,
         uploadFiles,
+        cancelUpload,
+        retryUpload,
+        clearUploadQueue,
         deleteSelected,
         toggleFavorite,
         renameItem,
