@@ -1,93 +1,108 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { HardDrive, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { HardDrive, Lock, Mail, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setError(null);
-
     try {
       await login(email, password);
       navigate("/dashboard");
     } catch (err: any) {
-      setError(err.message || "Invalid credentials.");
+      setError(err.message || "Invalid credentials");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-slate-900 text-white p-4">
-      <div className="w-full max-w-md space-y-6 bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-        <div className="space-y-2 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-500 flex items-center justify-center mx-auto">
+    <div className="min-h-screen bg-[#111111] text-white flex items-center justify-center p-4 selection:bg-[#F26A21] selection:text-white">
+      <div className="w-full max-w-md bg-[#2B2B2B]/60 border border-[#2B2B2B] rounded-3xl p-8 shadow-2xl space-y-6 backdrop-blur-md">
+        {/* Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 rounded-2xl bg-[#F26A21] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#F26A21]/20">
             <HardDrive className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Sign in to Conflux</h1>
-          <p className="text-xs text-slate-400">Unified Multi-Cloud Storage Platform</p>
+          <h1 className="text-xl font-extrabold text-white tracking-tight">Welcome Back to Conflux</h1>
+          <p className="text-xs text-[#6B7280]">Enter your credentials to access your unified cloud drive.</p>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 p-3 text-xs bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl font-medium text-center">
+            {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Email Address</label>
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Email Address</label>
             <div className="relative">
+              <Mail className="w-4 h-4 text-[#6B7280] absolute left-3 top-3" />
               <Input
                 type="email"
                 required
-                placeholder="you@example.com"
+                placeholder="name@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="bg-slate-900 border-slate-800 focus:border-blue-500 text-white pr-9"
+                className="pl-9 bg-[#111111] border-[#2B2B2B] text-white text-xs h-10 focus:border-[#F26A21]"
               />
-              <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <label className="font-semibold text-slate-300">Password</label>
-              <Link to="/forgot-password" className="text-blue-400 hover:underline">Forgot password?</Link>
+          <div className="space-y-1">
+            <div className="flex justify-between items-center">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Password</label>
+              <Link to="/forgot-password" className="text-[11px] font-semibold text-[#F26A21] hover:underline">
+                Forgot password?
+              </Link>
             </div>
             <div className="relative">
+              <Lock className="w-4 h-4 text-[#6B7280] absolute left-3 top-3" />
               <Input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-slate-900 border-slate-800 focus:border-blue-500 text-white pr-9"
+                className="pl-9 pr-9 bg-[#111111] border-[#2B2B2B] text-white text-xs h-10 focus:border-[#F26A21]"
               />
-              <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-[#6B7280] hover:text-white"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 text-xs">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Sign In"}
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#F26A21] hover:bg-[#C94F0C] text-white font-bold text-xs h-10 rounded-xl shadow-lg transition-all"
+          >
+            {loading ? "Authenticating..." : "Sign In to Workspace"} <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </form>
 
-        <div className="text-center text-xs text-slate-400 pt-2 border-t border-slate-800">
-          Don't have an account? <Link to="/register" className="text-blue-400 hover:underline font-semibold">Create account</Link>
+        <div className="text-center text-xs text-[#6B7280] pt-2">
+          Don't have an account?{" "}
+          <Link to="/register" className="font-bold text-[#F26A21] hover:underline">
+            Create account
+          </Link>
         </div>
       </div>
     </div>
