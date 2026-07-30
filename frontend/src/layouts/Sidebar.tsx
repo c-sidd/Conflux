@@ -16,16 +16,16 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-[#111111] border-r border-[#2B2B2B] text-slate-300 flex flex-col justify-between shrink-0">
+    <aside className="w-64 bg-[#22223B] border-r border-[#4A4E69]/40 text-[#F2E9E4] flex flex-col justify-between shrink-0">
       <div className="p-4 space-y-6">
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-2">
-          <div className="p-2 bg-[#F26A21] rounded-xl text-white shadow-md">
+          <div className="p-2 bg-[#9A8C98] rounded-xl text-[#22223B] shadow-md font-bold">
             <HardDrive className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-tight">Conflux Workspace</h1>
-            <p className="text-[10px] text-[#6B7280]">Multi-Cloud Storage</p>
+            <h1 className="text-sm font-bold text-[#F2E9E4] tracking-tight">Conflux Workspace</h1>
+            <p className="text-[10px] text-[#C9ADA7]">Multi-Cloud Storage</p>
           </div>
         </div>
 
@@ -41,8 +41,8 @@ export function Sidebar() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                     isActive
-                      ? "bg-[#F26A21]/15 text-[#F26A21] border border-[#F26A21]/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-[#2B2B2B]"
+                      ? "bg-[#4A4E69] text-white border border-[#9A8C98]/40 shadow-xs"
+                      : "text-[#C9ADA7] hover:text-white hover:bg-[#4A4E69]/50"
                   }`
                 }
               >
@@ -54,7 +54,7 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="p-4 border-t border-[#2B2B2B] text-[10px] text-[#6B7280] text-center">
+      <div className="p-4 border-t border-[#4A4E69]/40 text-[10px] text-[#9A8C98] text-center font-medium">
         Conflux v1.0.0 — Unified Storage
       </div>
     </aside>

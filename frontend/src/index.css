@@ -1,51 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-white: #FFFFFF;
-  --color-whitesmoke: #F3F4F6;
-  --color-slate-grey: #6B7280;
-  --color-graphite: #2B2B2B;
-  --color-onyx: #111111;
-  --color-spicy-orange: #C94F0C;
-  --color-blaze-orange: #F26A21;
+  --color-space-indigo: #22223B;
+  --color-dusty-grape: #4A4E69;
+  --color-lilac-ash: #9A8C98;
+  --color-almond-silk: #C9ADA7;
+  --color-seashell: #F2E9E4;
 }
 
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    background-color: #F3F4F6;
-    color: #111111;
+    background-color: #F2E9E4;
+    color: #22223B;
   }
 
   .dark body {
-    background-color: #111111;
-    color: #FFFFFF;
+    background-color: #22223B;
+    color: #F2E9E4;
   }
 }
 
-/* Custom Palette Utilities */
-.bg-blaze {
-  background-color: #F26A21;
+/* Custom Space Indigo Palette Classes */
+.bg-space-indigo {
+  background-color: #22223B;
 }
-.bg-blaze-hover:hover {
-  background-color: #C94F0C;
+.bg-dusty-grape {
+  background-color: #4A4E69;
 }
-.text-blaze {
-  color: #F26A21;
+.bg-lilac-ash {
+  background-color: #9A8C98;
 }
-.border-blaze {
-  border-color: #F26A21;
+.bg-almond-silk {
+  background-color: #C9ADA7;
+}
+.bg-seashell {
+  background-color: #F2E9E4;
 }
 
-.bg-onyx {
-  background-color: #111111;
+.text-space-indigo {
+  color: #22223B;
 }
-.bg-graphite {
-  background-color: #2B2B2B;
+.text-dusty-grape {
+  color: #4A4E69;
 }
-.bg-whitesmoke {
-  background-color: #F3F4F6;
+.text-lilac-ash {
+  color: #9A8C98;
 }
-.text-slate-grey {
-  color: #6B7280;
+
+.border-space-indigo {
+  border-color: #22223B;
+}
+.border-dusty-grape {
+  border-color: #4A4E69;
+}
+.border-lilac-ash {
+  border-color: #9A8C98;
 }
