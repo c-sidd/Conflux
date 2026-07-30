@@ -1,7 +1,51 @@
 @import "tailwindcss";
 
+@theme {
+  --color-white: #FFFFFF;
+  --color-whitesmoke: #F3F4F6;
+  --color-slate-grey: #6B7280;
+  --color-graphite: #2B2B2B;
+  --color-onyx: #111111;
+  --color-spicy-orange: #C94F0C;
+  --color-blaze-orange: #F26A21;
+}
+
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #F3F4F6;
+    color: #111111;
   }
+
+  .dark body {
+    background-color: #111111;
+    color: #FFFFFF;
+  }
+}
+
+/* Custom Palette Utilities */
+.bg-blaze {
+  background-color: #F26A21;
+}
+.bg-blaze-hover:hover {
+  background-color: #C94F0C;
+}
+.text-blaze {
+  color: #F26A21;
+}
+.border-blaze {
+  border-color: #F26A21;
+}
+
+.bg-onyx {
+  background-color: #111111;
+}
+.bg-graphite {
+  background-color: #2B2B2B;
+}
+.bg-whitesmoke {
+  background-color: #F3F4F6;
+}
+.text-slate-grey {
+  color: #6B7280;
 }
