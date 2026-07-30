@@ -1,52 +1,44 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import { FileItem, FolderItem } from "@/types";
 
 export type ViewMode = "grid" | "list";
 export type SortField = "name" | "size" | "updated_at";
-export type FilterType = "all" | "images" | "pdf" | "documents" | "favorites";
+export type FilterType = "all" | "images" | "pdf" | "favorites";
 
 interface ExplorerContextType {
-  currentFolderId: number | null;
-  setCurrentFolderId: (id: number | null) => void;
   files: FileItem[];
   folders: FolderItem[];
-  loading: boolean;
-  refreshExplorer: () => Promise<void>;
-  
-  // Selection
+  currentFolderId: number | null;
   selectedIds: Set<string>;
+  viewMode: ViewMode;
+  sortField: SortField;
+  filter: FilterType;
+  searchQuery: string;
+  loading: boolean;
+  setCurrentFolderId: (id: number | null) => void;
+  setViewMode: (mode: ViewMode) => void;
+  setSortField: (field: SortField) => void;
+  setFilter: (filter: FilterType) => void;
+  setSearchQuery: (query: string) => void;
   toggleSelection: (id: string, isMulti?: boolean) => void;
   selectAll: () => void;
   clearSelection: () => void;
-
-  // View, Filter, Sort
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  sortField: SortField;
-  setSortField: (field: SortField) => void;
-  filter: FilterType;
-  setFilter: (f: FilterType) => void;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
-
-  // Actions
   uploadFiles: (files: File[]) => Promise<void>;
   deleteSelected: () => Promise<void>;
   toggleFavorite: (file: FileItem) => Promise<void>;
-  renameItem: (item: FileItem | FolderItem, newName: string) => Promise<void>;
+  renameItem: (item: any, newName: string) => Promise<void>;
+  refreshExplorer: () => void;
 }
 
 const ExplorerContext = createContext<ExplorerContextType | undefined>(undefined);
 
 export function ExplorerProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewModeState] = useState<ViewMode>("grid");
+  const [viewMode, setViewModeState] = useState<ViewMode>("list");
   const [sortField, setSortField] = useState<SortField>("name");
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,26 +53,23 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
     if (savedView) setViewModeState(savedView);
   }, []);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [filesRes, foldersRes] = await Promise.all([
-        apiClient.get("/api/v1/files/"),
-        apiClient.get("/api/v1/folders/"),
-      ]);
-      setFiles(filesRes.data);
-      setFolders(foldersRes.data);
-    } catch (e) {
-      console.error("Failed to load explorer items", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Use TanStack Query for instant < 100ms cached file & folder data
+  const { data: filesData = [], isLoading: filesLoading } = useQuery<FileItem[]>({
+    queryKey: ["files"],
+    queryFn: async () => (await apiClient.get("/api/v1/files/")).data,
+  });
 
-  useEffect(() => {
-    loadData();
-    setSelectedIds(new Set());
-  }, [currentFolderId, loadData]);
+  const { data: foldersData = [], isLoading: foldersLoading } = useQuery<FolderItem[]>({
+    queryKey: ["folders"],
+    queryFn: async () => (await apiClient.get("/api/v1/folders/")).data,
+  });
+
+  const loading = filesLoading || foldersLoading;
+
+  const refreshExplorer = () => {
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["folders"] });
+  };
 
   const toggleSelection = (id: string, isMulti = false) => {
     setSelectedIds((prev) => {
@@ -93,8 +82,8 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
 
   const selectAll = () => {
     const all = new Set<string>();
-    folders.filter(f => f.parent === currentFolderId && !f.is_trashed).forEach(f => all.add(`folder-${f.id}`));
-    files.filter(f => f.folder === currentFolderId && !f.is_trashed).forEach(f => all.add(`file-${f.id}`));
+    foldersData.filter((f) => f.parent === currentFolderId && !f.is_trashed).forEach((f) => all.add(`folder-${f.id}`));
+    filesData.filter((f) => f.folder === currentFolderId && !f.is_trashed).forEach((f) => all.add(`file-${f.id}`));
     setSelectedIds(all);
   };
 
@@ -111,63 +100,81 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "multipart/form-data" },
         });
       } catch (err) {
-        console.error(err);
+        console.error("Upload error", err);
       }
     }
-    loadData();
+    refreshExplorer();
   };
 
   const deleteSelected = async () => {
-    const fileIds = files.filter((f) => selectedIds.has(`file-${f.id}`)).map((f) => f.id);
-    const folderIds = folders.filter((f) => selectedIds.has(`folder-${f.id}`)).map((f) => f.id);
-
-    if (fileIds.length > 0) {
-      await apiClient.post("/api/v1/files/bulk-delete/", { file_ids: fileIds });
+    const ids = Array.from(selectedIds);
+    for (const itemKey of ids) {
+      const [type, idStr] = itemKey.split("-");
+      const id = parseInt(idStr, 10);
+      try {
+        if (type === "folder") {
+          await apiClient.delete(`/api/v1/folders/${id}/`);
+        } else {
+          await apiClient.delete(`/api/v1/files/${id}/`);
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
-    for (const id of folderIds) {
-      await apiClient.delete(`/api/v1/folders/${id}/`);
-    }
-    loadData();
     setSelectedIds(new Set());
+    refreshExplorer();
   };
 
   const toggleFavorite = async (file: FileItem) => {
-    await apiClient.post(`/api/v1/files/${file.id}/favorite/`);
-    loadData();
+    // Optimistic UI update for instant feedback
+    queryClient.setQueryData<FileItem[]>(["files"], (old = []) =>
+      old.map((f) => (f.id === file.id ? { ...f, is_favorite: !f.is_favorite } : f))
+    );
+    try {
+      await apiClient.post(`/api/v1/files/${file.id}/favorite/`);
+    } catch (err) {
+      refreshExplorer();
+    }
   };
 
-  const renameItem = async (item: FileItem | FolderItem, newName: string) => {
-    const isFile = "mime_type" in item;
-    const url = isFile ? `/api/v1/files/${item.id}/` : `/api/v1/folders/${item.id}/`;
-    await apiClient.patch(url, { name: newName });
-    loadData();
+  const renameItem = async (item: any, newName: string) => {
+    try {
+      if (item.mime_type !== undefined) {
+        await apiClient.patch(`/api/v1/files/${item.id}/`, { name: newName });
+      } else {
+        await apiClient.patch(`/api/v1/folders/${item.id}/`, { name: newName });
+      }
+      refreshExplorer();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
     <ExplorerContext.Provider
       value={{
+        files: filesData,
+        folders: foldersData,
         currentFolderId,
-        setCurrentFolderId,
-        files,
-        folders,
-        loading,
-        refreshExplorer: loadData,
         selectedIds,
+        viewMode,
+        sortField,
+        filter,
+        searchQuery,
+        loading,
+        setCurrentFolderId,
+        setViewMode,
+        setSortField,
+        setFilter,
+        setSearchQuery,
         toggleSelection,
         selectAll,
         clearSelection,
-        viewMode,
-        setViewMode,
-        sortField,
-        setSortField,
-        filter,
-        setFilter,
-        searchQuery,
-        setSearchQuery,
         uploadFiles,
         deleteSelected,
         toggleFavorite,
         renameItem,
+        refreshExplorer,
       }}
     >
       {children}
@@ -177,6 +184,6 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
 
 export function useExplorer() {
   const context = useContext(ExplorerContext);
-  if (!context) throw new Error("useExplorer must be used within an ExplorerProvider");
+  if (!context) throw new Error("useExplorer must be used within ExplorerProvider");
   return context;
 }

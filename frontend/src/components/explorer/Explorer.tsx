@@ -11,6 +11,7 @@ import { ExplorerDropZone } from "./ExplorerDropZone";
 import { ExplorerContextMenu } from "./ExplorerContextMenu";
 import { FilePreviewModal } from "./FilePreviewModal";
 import { OnboardingGuide } from "@/components/OnboardingGuide";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
@@ -91,7 +92,12 @@ function ExplorerContent() {
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-8 text-center text-xs text-[#9A8C98]">Loading workspace files...</div>
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-12 w-full rounded-2xl" />
+              <Skeleton className="h-12 w-full rounded-2xl" />
+              <Skeleton className="h-12 w-full rounded-2xl" />
+              <Skeleton className="h-12 w-full rounded-2xl" />
+            </div>
           ) : filteredFolders.length === 0 && filteredFiles.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
               <img src={emptyFolderIllustration} alt="Folder is empty" className="w-44 mx-auto" />
@@ -191,7 +197,7 @@ function ExplorerContent() {
                 className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setRenameModalOpen(false)} className="text-xs">
+                <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)} className="text-xs">
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" className="text-xs bg-[#4A4E69] hover:bg-[#9A8C98] text-white">

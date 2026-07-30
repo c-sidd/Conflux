@@ -5,10 +5,13 @@ import { AuthProvider } from "@/context/AuthContext";
 import { AppRoutes } from "@/routes/AppRoutes";
 import { Toaster } from "sonner";
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes cache stale time for instant < 100ms navigation
+      gcTime: 1000 * 60 * 10,   // 10 minutes garbage collection time
       refetchOnWindowFocus: false,
+      refetchOnMount: false,
       retry: 1,
     },
   },
