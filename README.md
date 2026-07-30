@@ -1,65 +1,77 @@
 # Conflux — Unified Multi-Cloud Storage Platform
 
-> **Many Clouds. One Workspace.**
-
-**Conflux** is a unified cloud storage platform that combines multiple cloud storage accounts into a single virtual workspace. Users interact with one filesystem while Conflux intelligently manages storage placement, synchronization, and orchestration across connected providers.
+Conflux is a unified multi-cloud storage platform that pools storage capacity across multiple connected cloud accounts (Google Drive, S3, Dropbox) into a single virtual filesystem.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Features
 
-- **Unified Storage Pool**: Connect multiple Google Drive accounts (and future providers like Dropbox, OneDrive, and S3) into a single virtual disk space.
-- **Smart Placement Engine (`MostFreeSpaceStrategy`)**: Uploaded files are automatically routed to the account with the largest available quota.
-- **Conflux Workspace Isolation**: Managed files are strictly scoped inside a dedicated `Conflux` root folder on every provider account, preserving personal drive privacy.
-- **Full File Operations**: Supports Rename, Move, Copy, Multi-select Batch Actions, Properties Sidebar, File Previews, and Recursive ZIP Downloads.
-- **Soft Delete & 8-Second Undo Queue**: Deletions move items to Trash with instant undo window and guided safe account removal workflow.
-- **API Versioning (`/api/v1/`)**: Production-ready versioned API endpoints with standard response payloads (`{"success": true, "data": ...}`).
+- **Multi-Account Storage Pooling**: Connect multiple Google Drive accounts to pool storage capacity seamlessly.
+- **Smart Placement Engine (`StorageManager`)**: Automatically routes uploaded files to the connected account with the most free space (`most_free` strategy), or uses round-robin / best-fit placement.
+- **High-Performance React 19 + Vite SPA**: Rebuilt from scratch with React Router DOM v7, TanStack Query, Axios, TailwindCSS, and shadcn/ui.
+- **Full File & Folder Virtual Filesystem**: Nested virtual folders, breadcrumb navigation, grid/list views, multi-attribute sorting, search, quick filter pills, starred favorites, recent files, and soft-delete trash recovery.
+- **Rich Desktop File Explorer UX**:
+  - Drag-and-drop file upload overlay (`ExplorerDropZone`)
+  - Floating multi-select batch action bar (`ExplorerFloatingBar`)
+  - Native right-click context menu (`ExplorerContextMenu`)
+  - Persistent properties side panel (`ExplorerProperties`)
+  - Keyboard shortcuts (`Delete`, `Ctrl+A`, `Esc`)
+  - Upload queue widget with MB/s transfer speed & ETA monitor (`ExplorerUploadQueue`)
+  - Pre-flight duplicate filename conflict resolver (`ExplorerConflictModal`)
+  - In-browser file preview modal (`FilePreviewModal` for images, PDFs, text)
+  - Bulk ZIP download & folder `.zip` streaming download
+- **Direct Django DRF Authentication**: Registration, login, direct JWT auth, password reset, email verification, active device session tracking, and audit logging.
+- **Light / Dark Theme System**: Persisted theme switcher (`localStorage`) supporting dark mode styling.
 
 ---
 
 ## 🛠️ Technology Stack
 
-- **Frontend**: Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Lucide React Icons.
-- **Backend**: Python 3.11, Django, Django REST Framework, SimpleJWT.
-- **Database & Cache**: PostgreSQL, Redis.
-- **Background Jobs**: Celery, Celery Beat.
-- **Containerization**: Docker, Docker Compose.
+- **Frontend**: React 19, Vite v6.4, React Router DOM v7, TanStack Query v5, Axios, TailwindCSS, Lucide Icons
+- **Backend**: Python 3.14, Django 5.1, Django REST Framework, SimpleJWT, Celery, Redis, drf-spectacular (OpenAPI 3.0)
+- **Database**: Neon PostgreSQL
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## ⚙️ Quick Start Guide
 
 ### 1. Environment Setup
-Copy template `.env.example` into `backend/.env`:
+Create environment configuration based on `.env.example`:
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
+cp .env.example backend/.env
+cp .env.example frontend/.env
 ```
 
-### 2. Run with Docker Compose
+### 2. Start Backend Server
 ```bash
-docker-compose up --build
+cd backend
+.\venv\Scripts\Activate.ps1
+python manage.py migrate
+python manage.py runserver
 ```
+Backend API will run on **`http://127.0.0.1:8000`** (Swagger docs at **`http://127.0.0.1:8000/api/docs/`**).
 
-### 3. Run Manually
-- **Backend**:
-  ```bash
-  cd backend
-  python -m venv venv
-  venv\Scripts\activate
-  pip install -r requirements.txt
-  python manage.py migrate
-  python manage.py runserver 127.0.0.1:8000
-  ```
-- **Frontend**:
-  ```bash
-  cd frontend
-  npm install
-  npm run dev
-  ```
+### 3. Start Frontend Dev Server
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Frontend will run on **`http://localhost:3000`**.
 
 ---
 
-## 📄 License & Metadata
-- **Platform**: Conflux
-- **Version**: 1.0.0
-- **Support**: support@conflux.app
+## 🧪 Automated Testing
+
+Run the Django test suite:
+```bash
+cd backend
+python manage.py test
+```
+All 16 unit tests pass 100%.
+
+---
+
+## 📄 License
+MIT License.
