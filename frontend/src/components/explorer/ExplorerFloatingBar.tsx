@@ -37,26 +37,26 @@ export function ExplorerFloatingBar() {
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 border border-slate-800 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 text-xs">
-      <div className="flex items-center gap-2 font-bold border-r border-slate-700 pr-3">
-        <CheckSquare className="w-4 h-4 text-blue-400" />
-        <span>{selectedIds.size} Selected</span>
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-primary border border-primary-hover text-white px-5 py-3 rounded-[var(--radius-2xl)] shadow-[var(--shadow-float)] flex items-center gap-4 text-[var(--font-size-caption)] cfx-slide-up">
+      <div className="flex items-center gap-2 font-extrabold border-r border-white/25 pr-3">
+        <CheckSquare className="w-4 h-4 text-brand-gold" />
+        <span className="text-white">{selectedIds.size} Selected</span>
       </div>
 
       <div className="flex items-center gap-2">
-        <Button onClick={handleBatchDownload} variant="ghost" size="sm" className="text-xs text-slate-200 hover:text-white">
-          <Download className="w-3.5 h-3.5 mr-1.5 text-blue-400" /> Download ZIP
+        <Button onClick={handleBatchDownload} variant="ghost" size="sm" className="text-white hover:text-white hover:bg-white/20 font-bold">
+          <Download className="w-3.5 h-3.5 mr-1.5 text-brand-gold" /> Download ZIP
         </Button>
-        <Button onClick={deleteSelected} variant="ghost" size="sm" className="text-xs text-red-400 hover:text-red-300">
-          <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Move to Trash
+        <Button onClick={deleteSelected} variant="ghost" size="sm" className="text-red-200 hover:text-white hover:bg-red-500/30 font-bold">
+          <Trash2 className="w-3.5 h-3.5 mr-1.5 text-red-300" /> Move to Trash
         </Button>
       </div>
 
-      <div className="border-l border-slate-700 pl-2 flex items-center gap-1">
-        <button onClick={selectAll} className="px-2 py-1 text-slate-400 hover:text-white font-semibold">
+      <div className="border-l border-white/25 pl-2 flex items-center gap-1">
+        <button onClick={selectAll} className="px-2 py-1 text-white/90 hover:text-white font-extrabold cursor-pointer transition-colors duration-[var(--duration-fast)]">
           Select All
         </button>
-        <button onClick={clearSelection} className="p-1 text-slate-400 hover:text-white">
+        <button onClick={clearSelection} className="p-1 text-white/80 hover:text-white cursor-pointer transition-colors duration-[var(--duration-fast)]">
           <X className="w-4 h-4" />
         </button>
       </div>

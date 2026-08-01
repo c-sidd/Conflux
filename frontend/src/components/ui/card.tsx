@@ -6,7 +6,10 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={twMerge(clsx("bg-white border border-slate-200/80 rounded-2xl shadow-2xs", className))}
+      className={twMerge(clsx(
+        "bg-bg-surface border border-border rounded-[var(--radius-xl)] shadow-[var(--shadow-sm)] transition-all duration-[var(--duration-normal)] ease-[var(--ease-default)]",
+        className
+      ))}
       {...props}
     />
   )

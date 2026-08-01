@@ -30,6 +30,7 @@ def get_origin(request) -> str:
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'register'
 
     def post(self, request):
@@ -63,6 +64,7 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'login'
 
     def post(self, request):
@@ -84,6 +86,7 @@ class LoginView(APIView):
 
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'forgot_password'
 
     def post(self, request):
@@ -104,6 +107,7 @@ class ForgotPasswordView(APIView):
 
 class VerifyResetTokenView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'verify_email'
 
     def post(self, request):
@@ -120,6 +124,7 @@ class VerifyResetTokenView(APIView):
 
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'reset_password'
 
     def post(self, request):
@@ -163,6 +168,7 @@ class ChangePasswordView(APIView):
 
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_scope = 'verify_email'
 
     def post(self, request):

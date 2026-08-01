@@ -7,6 +7,7 @@ from apps.files.serializers import FileSerializer
 from apps.folders.models import Folder
 from apps.folders.serializers import FolderSerializer
 from apps.storage.manager import StorageManager
+from apps.storage.models import ActivityLog
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,68 @@ class TrashListView(APIView):
             'folders': folder_serializer.data,
             'total_items': trashed_files.count() + trashed_folders.count()
         })
+
+class RestoreItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk=None):
+        item_type = request.data.get('type', 'file')
+        if item_type == 'folder':
+            try:
+                folder = Folder.objects.get(id=pk, user=request.user, is_trashed=True)
+                folder.is_trashed = False
+                folder.save()
+                return Response({'message': 'Folder restored from trash', 'folder': FolderSerializer(folder).data})
+            except Folder.DoesNotExist:
+                return Response({'error': 'Trashed folder not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            try:
+                file_obj = File.objects.get(id=pk, user=request.user, is_trashed=True)
+                file_obj.is_trashed = False
+                file_obj.save()
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action='restore',
+                    details={'filename': file_obj.name, 'file_id': file_obj.id}
+                )
+                return Response({'message': 'File restored from trash', 'file': FileSerializer(file_obj).data})
+            except File.DoesNotExist:
+                return Response({'error': 'Trashed file not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class PermanentDeleteItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk=None):
+        item_type = request.query_params.get('type', 'file')
+        if item_type == 'folder':
+            try:
+                folder = Folder.objects.get(id=pk, user=request.user, is_trashed=True)
+                folder.delete()
+                return Response({'message': 'Folder permanently deleted'})
+            except Folder.DoesNotExist:
+                return Response({'error': 'Trashed folder not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            try:
+                file_obj = File.objects.get(id=pk, user=request.user, is_trashed=True)
+                manager = StorageManager(user=request.user)
+                try:
+                    manager.delete_file(
+                        account_id=file_obj.storage_account.id,
+                        provider_file_id=file_obj.provider_file_id,
+                        filename=file_obj.name,
+                        size=file_obj.size
+                    )
+                except Exception as e:
+                    logger.error(f"Error purging file from Drive {file_obj.name}: {str(e)}")
+                file_obj.delete()
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action='permanent_delete',
+                    details={'filename': file_obj.name}
+                )
+                return Response({'message': 'File permanently deleted'})
+            except File.DoesNotExist:
+                return Response({'error': 'Trashed file not found'}, status=status.HTTP_404_NOT_FOUND)
 
 class EmptyTrashView(APIView):
     permission_classes = [IsAuthenticated]

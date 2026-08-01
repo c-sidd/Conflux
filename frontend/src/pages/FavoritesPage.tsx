@@ -10,10 +10,10 @@ function FavoritesContent() {
   }, [setFilter]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-50">
-      <div className="p-4 bg-white border-b border-slate-200/80 flex items-center gap-2">
-        <Star className="w-5 h-5 text-amber-500 fill-current" />
-        <h1 className="text-sm font-bold text-slate-900">Starred Files</h1>
+    <div className="flex-1 flex flex-col min-h-0 bg-bg-canvas">
+      <div className="p-4 bg-bg-surface border-b border-border flex items-center gap-2">
+        <Star className="w-5 h-5 text-brand-gold fill-current" />
+        <h1 className="text-[var(--font-size-subtitle)] font-bold text-text-primary">Starred Files</h1>
       </div>
       <div className="flex-1 overflow-y-auto">
         <ExplorerGrid />

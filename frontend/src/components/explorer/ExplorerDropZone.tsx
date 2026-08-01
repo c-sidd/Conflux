@@ -55,12 +55,12 @@ export function ExplorerDropZone() {
   if (!isDragging) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-blue-600/80 backdrop-blur-xs border-4 border-dashed border-white flex flex-col items-center justify-center text-white text-center p-6 space-y-4">
-      <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center animate-bounce">
+    <div className="fixed inset-0 z-50 bg-primary/85 backdrop-blur-sm border-4 border-dashed border-white/50 flex flex-col items-center justify-center text-white text-center p-6 space-y-4 cfx-animate-in">
+      <div className="w-20 h-20 rounded-[var(--radius-full)] bg-white/15 flex items-center justify-center animate-bounce">
         <Upload className="w-10 h-10 text-white" />
       </div>
-      <h2 className="text-2xl font-extrabold tracking-tight">Drop files here to upload to Conflux</h2>
-      <p className="text-sm font-semibold text-blue-100">Your files will be automatically stored across your connected Google Drive accounts.</p>
+      <h2 className="text-[var(--font-size-h2)] font-extrabold tracking-tight">Drop files here to upload to Conflux</h2>
+      <p className="text-[var(--font-size-body)] font-medium text-white/75">Your files will be automatically stored across your connected Google Drive accounts.</p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { StorageAccount } from "@/types";
 import { HardDrive, Plus, RefreshCw, AlertTriangle, Trash2, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { StorageAnalyticsChart } from "@/components/StorageAnalyticsChart";
 import cloudConnectIllustration from "@/assets/illustrations/cloud-connect.svg";
 
@@ -64,25 +65,25 @@ export function StoragePage() {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+    <div className="flex-1 p-6 space-y-6 overflow-y-auto cfx-animate-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-[#111111] dark:text-white tracking-tight">Storage Accounts & Analytics</h1>
-          <p className="text-xs text-[#6B7280] mt-0.5">Manage connected Google Drive accounts, health status, and pooled capacity</p>
+          <h1 className="text-[var(--font-size-h3)] font-bold text-text-primary tracking-tight">Storage Accounts & Analytics</h1>
+          <p className="text-[var(--font-size-caption)] text-text-muted mt-0.5">Manage connected Google Drive accounts, health status, and pooled capacity</p>
         </div>
-        <Button onClick={handleConnectGoogle} className="bg-[#F26A21] hover:bg-[#C94F0C] text-white text-xs">
+        <Button onClick={handleConnectGoogle}>
           <Plus className="w-4 h-4 mr-1.5" /> Connect Google Drive
         </Button>
       </div>
 
       {loading ? (
-        <div className="text-xs text-slate-400 text-center py-12">Loading storage accounts...</div>
+        <div className="text-[var(--font-size-caption)] text-text-muted text-center py-12">Loading storage accounts...</div>
       ) : accounts.length === 0 ? (
-        <Card className="p-8 text-center space-y-4 max-w-md mx-auto my-12 bg-white dark:bg-[#111111] border-[#2B2B2B]">
-          <img src={cloudConnectIllustration} alt="No connected accounts" className="w-48 mx-auto" />
-          <h3 className="text-sm font-bold text-[#111111] dark:text-white">No Storage Accounts Connected</h3>
-          <p className="text-xs text-[#6B7280]">Connect your Google Drive accounts to pool storage capacity into a single drive.</p>
-          <Button onClick={handleConnectGoogle} className="bg-[#F26A21] hover:bg-[#C94F0C] text-white text-xs mt-2">
+        <Card className="p-8 text-center space-y-4 max-w-md mx-auto my-12">
+          <img src={cloudConnectIllustration} alt="No connected accounts" className="w-48 mx-auto opacity-90" />
+          <h3 className="text-[var(--font-size-subtitle)] font-bold text-text-primary">No Storage Accounts Connected</h3>
+          <p className="text-[var(--font-size-caption)] text-text-muted">Connect your Google Drive accounts to pool storage capacity into a single drive.</p>
+          <Button onClick={handleConnectGoogle} className="mt-2">
             <Plus className="w-4 h-4 mr-1.5" /> Connect First Account
           </Button>
         </Card>
@@ -96,50 +97,48 @@ export function StoragePage() {
               const isExpired = acc.health_status === "expired_token" || acc.health_status === "unauthorized";
 
               return (
-                <Card key={acc.id} className="p-5 space-y-4 bg-white dark:bg-[#111111] border-[#2B2B2B]">
+                <Card key={acc.id} className="p-5 space-y-4 hover:shadow-[var(--shadow-md)]">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-[#F26A21]/10 text-[#F26A21] border border-[#F26A21]/20">
+                      <div className="p-2.5 rounded-[var(--radius-lg)] bg-primary-light text-primary border border-primary/20">
                         <HardDrive className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-[#111111] dark:text-white">{acc.nickname}</h4>
-                        <p className="text-[11px] text-[#6B7280] truncate max-w-[160px]">{acc.provider_email}</p>
+                        <h4 className="text-[var(--font-size-caption)] font-bold text-text-primary">{acc.nickname}</h4>
+                        <p className="text-[var(--font-size-label)] text-text-muted truncate max-w-[160px]">{acc.provider_email}</p>
                       </div>
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      acc.health_status === "healthy" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
-                    }`}>
+                    <Badge variant={acc.health_status === "healthy" ? "success" : "warning"}>
                       {acc.health_status}
-                    </span>
+                    </Badge>
                   </div>
 
                   <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-semibold text-[#6B7280]">
+                    <div className="flex justify-between text-[var(--font-size-label)] font-semibold text-text-muted">
                       <span>Used: {formatSize(acc.used_storage)}</span>
                       <span>Total: {formatSize(acc.total_storage)}</span>
                     </div>
-                    <div className="h-2 w-full bg-[#F3F4F6] dark:bg-[#2B2B2B] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#F26A21] rounded-full" style={{ width: `${percent}%` }} />
+                    <div className="h-2 w-full bg-bg-sunken rounded-[var(--radius-full)] overflow-hidden">
+                      <div className="h-full bg-primary rounded-[var(--radius-full)] transition-all duration-500" style={{ width: `${percent}%` }} />
                     </div>
                   </div>
 
                   {isExpired && (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800">
-                      <span className="flex items-center gap-1.5 text-[11px] font-semibold">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Session Expired
+                    <div className="p-2.5 bg-warning-light border border-warning/20 rounded-[var(--radius-lg)] flex items-center justify-between text-[var(--font-size-caption)] text-warning">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Session Expired
                       </span>
-                      <Button onClick={handleConnectGoogle} size="sm" className="h-6 px-2 text-[10px] bg-amber-600 hover:bg-amber-700 text-white">
+                      <Button onClick={handleConnectGoogle} size="sm" variant="secondary" className="h-6 px-2 text-[var(--font-size-label)]">
                         <Link2 className="w-3 h-3 mr-1" /> Reconnect
                       </Button>
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-[#F3F4F6] dark:border-[#2B2B2B] flex items-center justify-between">
-                    <Button onClick={() => handleSyncQuota(acc.id)} variant="outline" size="sm" className="text-[11px]">
+                  <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
+                    <Button onClick={() => handleSyncQuota(acc.id)} variant="outline" size="sm">
                       <RefreshCw className="w-3 h-3 mr-1" /> Sync Quota
                     </Button>
-                    <Button onClick={() => handleDisconnect(acc.id)} variant="ghost" size="sm" className="text-[11px] text-red-600 hover:bg-red-50">
+                    <Button onClick={() => handleDisconnect(acc.id)} variant="ghost" size="sm" className="text-danger hover:bg-danger-light">
                       <Trash2 className="w-3 h-3 mr-1" /> Disconnect
                     </Button>
                   </div>

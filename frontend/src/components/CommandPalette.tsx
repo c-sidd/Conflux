@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Folder, HardDrive, Star, Clock, Activity, ShieldCheck, Upload, Plus, Sun, Moon, Search, X
+  Folder, HardDrive, Star, Clock, Activity, ShieldCheck, Plus, Search, X, Command
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -9,10 +9,9 @@ interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onNewFolder?: () => void;
-  onUpload?: () => void;
 }
 
-export function CommandPalette({ isOpen, onClose, onNewFolder, onUpload }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose, onNewFolder }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
@@ -44,40 +43,30 @@ export function CommandPalette({ isOpen, onClose, onNewFolder, onUpload }: Comma
         if (onNewFolder) onNewFolder();
       },
     },
-    {
-      label: "Toggle Light/Dark Theme",
-      icon: Sun,
-      action: () => {
-        const curr = localStorage.getItem("conflux_theme") || "light";
-        const next = curr === "light" ? "dark" : "light";
-        localStorage.setItem("conflux_theme", next);
-        document.documentElement.classList.toggle("dark", next === "dark");
-      },
-    },
   ];
 
   const filteredActions = actions.filter((a) => a.label.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-xs pt-20 p-4">
-      <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden space-y-2">
-        <div className="p-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-          <Search className="w-4 h-4 text-slate-400" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-bg-overlay backdrop-blur-sm pt-20 p-4 cfx-animate-in">
+      <div className="w-full max-w-lg bg-bg-surface border border-border rounded-[var(--radius-2xl)] shadow-[var(--shadow-modal)] overflow-hidden space-y-2 cfx-scale-in">
+        <div className="p-3 bg-bg-sunken border-b border-border flex items-center gap-2">
+          <Search className="w-4 h-4 text-text-muted" />
           <Input
             autoFocus
             placeholder="Type a command or search... (Press Esc to close)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="border-0 bg-transparent focus:ring-0 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+            className="border-0 bg-transparent focus:ring-0 text-[var(--font-size-caption)] text-text-primary placeholder:text-text-muted"
           />
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+          <button onClick={onClose} className="p-1 text-text-muted hover:text-text-primary transition-colors duration-[var(--duration-fast)]">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filteredActions.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400">No matching commands found.</div>
+            <div className="p-4 text-center text-[var(--font-size-caption)] text-text-muted">No matching commands found.</div>
           ) : (
             filteredActions.map((item, idx) => {
               const Icon = item.icon;
@@ -88,9 +77,9 @@ export function CommandPalette({ isOpen, onClose, onNewFolder, onUpload }: Comma
                     item.action();
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-lg)] hover:bg-primary-light text-text-primary text-[var(--font-size-caption)] font-medium transition-colors duration-[var(--duration-fast)] cursor-pointer text-left"
                 >
-                  <Icon className="w-4 h-4 text-blue-500 shrink-0" />
+                  <Icon className="w-4 h-4 text-primary shrink-0" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -98,7 +87,7 @@ export function CommandPalette({ isOpen, onClose, onNewFolder, onUpload }: Comma
           )}
         </div>
 
-        <div className="p-2.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-400 px-4 font-mono">
+        <div className="p-2.5 bg-bg-sunken border-t border-border flex items-center justify-between text-[var(--font-size-label)] text-text-muted px-4 font-mono">
           <span>Navigation Shortcuts</span>
           <span>Press ESC to close</span>
         </div>

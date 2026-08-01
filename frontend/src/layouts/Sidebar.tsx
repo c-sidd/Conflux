@@ -31,21 +31,21 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-[#E2E8F0] text-[#0F172A] flex flex-col justify-between shrink-0 select-none">
+    <aside className="w-64 bg-bg-surface border-r border-border text-text-primary flex flex-col justify-between shrink-0 select-none">
       <div className="p-4 space-y-6 overflow-y-auto">
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-2">
-          <div className="p-2 bg-[#2563EB] rounded-xl text-white shadow-md">
+          <div className="p-2 bg-primary rounded-[var(--radius-lg)] text-white shadow-[var(--shadow-md)]">
             <HardDrive className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-extrabold text-[#0F172A] tracking-tight">Conflux Workspace</h1>
-            <p className="text-[10px] text-[#475569]">Multi-Cloud Storage</p>
+            <h1 className="text-[var(--font-size-subtitle)] font-extrabold text-text-primary tracking-tight">Conflux</h1>
+            <p className="text-[var(--font-size-label)] text-text-muted">Multi-Cloud Storage</p>
           </div>
         </div>
 
         {/* Primary Navigation */}
-        <nav className="space-y-1">
+        <nav className="space-y-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -54,10 +54,10 @@ export function Sidebar() {
                 to={item.to}
                 end={item.to === "/dashboard"}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-lg)] text-[var(--font-size-caption)] font-medium transition-all duration-[var(--duration-normal)] ${
                     isActive
-                      ? "bg-[#DBEAFE] text-[#2563EB] font-bold shadow-2xs"
-                      : "text-[#475569] hover:text-[#2563EB] hover:bg-[#EFF6FF]"
+                      ? "bg-primary-light text-primary font-bold shadow-[var(--shadow-xs)]"
+                      : "text-text-secondary hover:text-primary hover:bg-primary-light"
                   }`
                 }
               >
@@ -70,10 +70,10 @@ export function Sidebar() {
 
         {/* Connected Storage Accounts Section */}
         {accounts.length > 0 && (
-          <div className="pt-4 border-t border-[#E2E8F0] space-y-3">
-            <div className="flex items-center justify-between px-2 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
+          <div className="pt-4 border-t border-border space-y-3">
+            <div className="flex items-center justify-between px-2 text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">
               <span>Connected Drives ({accounts.length})</span>
-              <NavLink to="/dashboard/storage" className="text-[#2563EB] hover:text-[#1D4ED8]">
+              <NavLink to="/dashboard/storage" className="text-primary hover:text-primary-hover transition-colors">
                 <Plus className="w-3.5 h-3.5" />
               </NavLink>
             </div>
@@ -82,23 +82,23 @@ export function Sidebar() {
               {accounts.map((acc) => {
                 const percent = acc.total_storage > 0 ? Math.round((acc.used_storage / acc.total_storage) * 100) : 0;
                 return (
-                  <div key={acc.id} className="p-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1.5 hover:border-[#2563EB]/40 transition-colors">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-[#0F172A] truncate max-w-[130px]" title={acc.nickname}>
+                  <div key={acc.id} className="p-2.5 bg-bg-sunken border border-border rounded-[var(--radius-lg)] space-y-1.5 hover:border-primary/30 transition-all duration-[var(--duration-normal)]">
+                    <div className="flex items-center justify-between text-[var(--font-size-caption)]">
+                      <span className="font-bold text-text-primary truncate max-w-[130px]" title={acc.nickname}>
                         {acc.nickname}
                       </span>
-                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold uppercase ${
-                        acc.health_status === "healthy" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                      <span className={`text-[var(--font-size-micro)] px-1.5 py-0.5 rounded-[var(--radius-full)] font-bold uppercase ${
+                        acc.health_status === "healthy" ? "bg-success-light text-success" : "bg-warning-light text-warning"
                       }`}>
                         {acc.health_status === "healthy" ? "OK" : "Sync"}
                       </span>
                     </div>
 
-                    <div className="h-1.5 w-full bg-[#E2E8F0] rounded-full overflow-hidden">
-                      <div className="h-full bg-[#2563EB] rounded-full" style={{ width: `${percent}%` }} />
+                    <div className="h-1.5 w-full bg-neutral-light rounded-[var(--radius-full)] overflow-hidden">
+                      <div className="h-full bg-primary rounded-[var(--radius-full)] transition-all duration-500" style={{ width: `${percent}%` }} />
                     </div>
 
-                    <div className="flex justify-between text-[9px] text-[#475569] font-mono">
+                    <div className="flex justify-between text-[var(--font-size-micro)] text-text-muted font-mono">
                       <span>{formatSize(acc.used_storage)} used</span>
                       <span>{percent}%</span>
                     </div>
@@ -110,8 +110,8 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="p-4 border-t border-[#E2E8F0] text-[10px] text-[#94A3B8] text-center font-semibold">
-        Conflux v1.0 — Unified Storage
+      <div className="p-4 border-t border-border text-[var(--font-size-label)] text-text-muted text-center font-medium">
+        Conflux v1.0 — Beta
       </div>
     </aside>
   );

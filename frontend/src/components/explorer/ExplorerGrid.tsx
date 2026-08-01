@@ -1,13 +1,13 @@
 import React from "react";
 import { useExplorer } from "./ExplorerContext";
 import { API_BASE_URL } from "@/api/client";
-import { Folder, FileText, Star, HardDrive, Download } from "lucide-react";
+import { Folder, FileText, Image as ImageIcon, Film, Archive, Star, HardDrive, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 export function ExplorerGrid() {
   const {
     files, folders, currentFolderId, selectedIds, toggleSelection,
-    setCurrentFolderId, toggleFavorite, searchQuery, filter
+    setCurrentFolderId, toggleFavorite, searchQuery, filter, sortField
   } = useExplorer();
 
   const token = localStorage.getItem("conflux_access_token") || "";
@@ -32,6 +32,25 @@ export function ExplorerGrid() {
     filteredFolders = [];
   }
 
+  // Multi-attribute sorting implementation
+  const sortItems = <T extends { name: string; size?: number; updated_at: string }>(items: T[]): T[] => {
+    return [...items].sort((a, b) => {
+      if (sortField === "name") {
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      } else if (sortField === "size") {
+        const sizeA = a.size || 0;
+        const sizeB = b.size || 0;
+        return sizeB - sizeA;
+      } else if (sortField === "updated_at") {
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
+      return 0;
+    });
+  };
+
+  filteredFolders = sortItems(filteredFolders);
+  filteredFiles = sortItems(filteredFiles);
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
     const k = 1024;
@@ -40,11 +59,22 @@ export function ExplorerGrid() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
+  const getFileIcon = (mimeType: string) => {
+    if (!mimeType) return <FileText className="w-8 h-8 text-file-icon" />;
+    if (mimeType.startsWith("image/")) return <ImageIcon className="w-8 h-8 text-image-icon" />;
+    if (mimeType.includes("pdf")) return <FileText className="w-8 h-8 text-pdf-icon" />;
+    if (mimeType.startsWith("video/")) return <Film className="w-8 h-8 text-video-icon" />;
+    if (mimeType.includes("zip") || mimeType.includes("tar") || mimeType.includes("rar") || mimeType.includes("compressed")) {
+      return <Archive className="w-8 h-8 text-archive-icon" />;
+    }
+    return <FileText className="w-8 h-8 text-file-icon" />;
+  };
+
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-6 cfx-animate-in">
       {filteredFolders.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Folders ({filteredFolders.length})</h3>
+        <div className="space-y-2.5">
+          <h3 className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Folders ({filteredFolders.length})</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {filteredFolders.map((folder) => {
               const itemKey = `folder-${folder.id}`;
@@ -54,21 +84,25 @@ export function ExplorerGrid() {
                   key={folder.id}
                   onClick={(e) => toggleSelection(itemKey, e.ctrlKey || e.metaKey)}
                   onDoubleClick={() => setCurrentFolderId(folder.id)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                    isSelected ? "bg-blue-50/80 border-blue-400 shadow-2xs" : "bg-white border-slate-200/80 hover:border-slate-300"
+                  className={`p-3 cursor-pointer select-none hover:shadow-[var(--shadow-md)] ${
+                    isSelected
+                      ? "bg-bg-selected border-primary shadow-[var(--shadow-sm)] ring-1 ring-primary/20"
+                      : "hover:border-border-strong"
                   }`}
                 >
                   <div className="flex items-center justify-between overflow-hidden">
                     <div className="flex items-center gap-2.5 overflow-hidden">
-                      <Folder className="w-5 h-5 text-amber-500 shrink-0" />
-                      <span className="text-xs font-semibold text-slate-800 truncate">{folder.name}</span>
+                      <Folder className="w-5 h-5 text-folder-icon shrink-0" />
+                      <span className={`text-[var(--font-size-caption)] font-semibold truncate ${isSelected ? "text-primary font-bold" : "text-text-primary"}`}>
+                        {folder.name}
+                      </span>
                     </div>
                     <a
                       href={`${API_BASE_URL}/api/v1/folders/${folder.id}/download-zip/${token ? `?token=${token}` : ""}`}
                       onClick={(e) => e.stopPropagation()}
                       download
                       title="Download Folder ZIP"
-                      className="p-1 text-slate-400 hover:text-blue-600"
+                      className="p-1 text-text-muted hover:text-primary transition-colors duration-[var(--duration-fast)]"
                     >
                       <Download className="w-3.5 h-3.5" />
                     </a>
@@ -81,8 +115,8 @@ export function ExplorerGrid() {
       )}
 
       {filteredFiles.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Files ({filteredFiles.length})</h3>
+        <div className="space-y-2.5">
+          <h3 className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Files ({filteredFiles.length})</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredFiles.map((file) => {
               const itemKey = `file-${file.id}`;
@@ -91,38 +125,40 @@ export function ExplorerGrid() {
                 <Card
                   key={file.id}
                   onClick={(e) => toggleSelection(itemKey, e.ctrlKey || e.metaKey)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer select-none space-y-3 ${
-                    isSelected ? "bg-blue-50/80 border-blue-400 shadow-2xs" : "bg-white border-slate-200/80 hover:border-slate-300"
+                  className={`p-4 cursor-pointer select-none space-y-3 hover:shadow-[var(--shadow-md)] ${
+                    isSelected
+                      ? "bg-bg-selected border-primary shadow-[var(--shadow-sm)] ring-1 ring-primary/20"
+                      : "hover:border-border-strong"
                   }`}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <FileText className="w-8 h-8 text-blue-500" />
+                    <div className="p-2 rounded-[var(--radius-lg)] bg-bg-sunken border border-border-subtle">
+                      {getFileIcon(file.mime_type)}
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleFavorite(file);
                       }}
-                      className={`p-1 ${file.is_favorite ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}`}
+                      className={`p-1 transition-colors duration-[var(--duration-fast)] ${file.is_favorite ? "text-brand-gold" : "text-text-disabled hover:text-brand-gold"}`}
                     >
                       <Star className="w-4 h-4 fill-current" />
                     </button>
                   </div>
 
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 truncate" title={file.name}>
+                    <h4 className={`text-[var(--font-size-caption)] font-bold truncate ${isSelected ? "text-primary" : "text-text-primary"}`} title={file.name}>
                       {file.name}
                     </h4>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                    <div className="flex items-center justify-between text-[var(--font-size-label)] text-text-muted mt-1">
                       <span>{formatSize(file.size)}</span>
                       <span>{new Date(file.updated_at).toLocaleDateString()}</span>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="flex items-center gap-1 text-slate-500 font-semibold truncate">
-                      <HardDrive className="w-3 h-3 text-blue-500 shrink-0" />
+                  <div className="pt-2 border-t border-border-subtle flex items-center justify-between text-[var(--font-size-label)] text-text-muted">
+                    <span className="flex items-center gap-1 text-text-secondary font-medium truncate">
+                      <HardDrive className="w-3 h-3 text-secondary shrink-0" />
                       {file.storage_account?.nickname || "Google Drive"}
                     </span>
                     <a
@@ -130,7 +166,7 @@ export function ExplorerGrid() {
                       onClick={(e) => e.stopPropagation()}
                       download
                       title="Download File"
-                      className="p-1 text-slate-400 hover:text-blue-600"
+                      className="p-1 text-text-muted hover:text-primary transition-colors duration-[var(--duration-fast)]"
                     >
                       <Download className="w-3.5 h-3.5" />
                     </a>

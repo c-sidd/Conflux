@@ -84,7 +84,7 @@ function ExplorerContent() {
   return (
     <div
       onContextMenu={(e) => e.preventDefault()}
-      className="flex-1 flex flex-row min-h-0 bg-slate-50 dark:bg-[#22223B] text-[#22223B] dark:text-[#F2E9E4] overflow-hidden"
+      className="flex-1 flex flex-row min-h-0 bg-bg-canvas text-text-primary overflow-hidden"
     >
       <ExplorerShortcuts />
       <ExplorerDropZone />
@@ -98,17 +98,17 @@ function ExplorerContent() {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="p-6 space-y-3">
-              <Skeleton className="h-12 w-full rounded-2xl" />
-              <Skeleton className="h-12 w-full rounded-2xl" />
-              <Skeleton className="h-12 w-full rounded-2xl" />
-              <Skeleton className="h-12 w-full rounded-2xl" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
             </div>
           ) : filteredFolders.length === 0 && filteredFiles.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4">
-              <img src={emptyFolderIllustration} alt="Folder is empty" className="w-44 mx-auto" />
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-4 cfx-animate-in">
+              <img src={emptyFolderIllustration} alt="Folder is empty" className="w-44 mx-auto opacity-80" />
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Workspace Folder is Empty</h3>
-                <p className="text-xs text-[#9A8C98]">Drag & drop files here or click "New Folder" above to get started.</p>
+                <h3 className="text-[var(--font-size-subtitle)] font-bold text-text-primary">Workspace Folder is Empty</h3>
+                <p className="text-[var(--font-size-caption)] text-text-muted">Drag & drop files here or click "New Folder" above to get started.</p>
               </div>
             </div>
           ) : viewMode === "grid" ? (
@@ -174,22 +174,21 @@ function ExplorerContent() {
       )}
 
       {newFolderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-[#22223B] rounded-2xl p-5 border border-slate-200 dark:border-[#4A4E69]/60 shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Create New Folder</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-bg-surface rounded-[var(--radius-2xl)] p-5 border border-border shadow-[var(--shadow-modal)] space-y-4 cfx-scale-in">
+            <h3 className="text-[var(--font-size-subtitle)] font-bold text-text-primary">Create New Folder</h3>
             <form onSubmit={handleCreateFolder} className="space-y-3">
               <Input
                 autoFocus
                 placeholder="Folder Name"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)} className="text-xs">
+                <Button type="button" variant="outline" size="sm" onClick={() => setNewFolderModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+                <Button type="submit" size="sm">
                   Create Folder
                 </Button>
               </div>
@@ -199,21 +198,20 @@ function ExplorerContent() {
       )}
 
       {renameModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-[#22223B] rounded-2xl p-5 border border-slate-200 dark:border-[#4A4E69]/60 shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-[#22223B] dark:text-white">Rename Item</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-bg-surface rounded-[var(--radius-2xl)] p-5 border border-border shadow-[var(--shadow-modal)] space-y-4 cfx-scale-in">
+            <h3 className="text-[var(--font-size-subtitle)] font-bold text-text-primary">Rename Item</h3>
             <form onSubmit={handleRenameSubmit} className="space-y-3">
               <Input
                 autoFocus
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-[#4A4E69]/30 border-slate-200 dark:border-[#4A4E69]"
               />
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setRenameModalOpen(false)} className="text-xs">
+                <Button type="button" variant="outline" size="sm" onClick={() => setRenameModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" className="text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+                <Button type="submit" size="sm">
                   Save Name
                 </Button>
               </div>

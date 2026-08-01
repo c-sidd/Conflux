@@ -29,55 +29,55 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex items-center justify-center p-4 selection:bg-[#2563EB] selection:text-white">
-      <div className="w-full max-w-md bg-white border border-[#E2E8F0] rounded-2xl p-8 shadow-sm space-y-6">
+    <div className="min-h-screen bg-bg-canvas text-text-primary flex items-center justify-center p-4 selection:bg-primary selection:text-white">
+      <div className="w-full max-w-md bg-bg-surface border border-border rounded-[var(--radius-2xl)] p-8 shadow-[var(--shadow-xl)] space-y-6 cfx-scale-in">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center mx-auto shadow-md">
+          <div className="w-12 h-12 rounded-[var(--radius-xl)] bg-primary text-white flex items-center justify-center mx-auto shadow-[var(--shadow-md)]">
             <HardDrive className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-extrabold text-[#0F172A] tracking-tight">Create Conflux Workspace</h1>
-          <p className="text-xs text-[#475569]">Start pooling your multi-cloud storage accounts in seconds.</p>
+          <h1 className="text-[var(--font-size-h3)] font-extrabold text-text-primary tracking-tight">Create Conflux Workspace</h1>
+          <p className="text-[var(--font-size-caption)] text-text-muted">Start pooling your multi-cloud storage accounts in seconds.</p>
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium text-center">
+          <div className="p-3 bg-danger-light border border-danger/20 text-danger text-[var(--font-size-caption)] rounded-[var(--radius-lg)] font-medium text-center">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wider">Email Address</label>
+            <label className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Email Address</label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-[#94A3B8] absolute left-3 top-3" />
+              <Mail className="w-4 h-4 text-text-muted absolute left-3 top-3" />
               <Input
                 type="email"
                 required
                 placeholder="name@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-9 bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] text-xs h-10 focus:border-[#2563EB]"
+                className="pl-9 h-10"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-[#475569] uppercase tracking-wider">Password</label>
+            <label className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3 top-3" />
+              <Lock className="w-4 h-4 text-text-muted absolute left-3 top-3" />
               <Input
                 type={showPassword ? "text" : "password"}
                 required
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-9 pr-9 bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] text-xs h-10 focus:border-[#2563EB]"
+                className="pl-9 pr-9 h-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-[#94A3B8] hover:text-[#0F172A]"
+                className="absolute right-3 top-3 text-text-muted hover:text-text-primary transition-colors duration-[var(--duration-fast)]"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -86,16 +86,16 @@ export function RegisterPage() {
 
           <Button
             type="submit"
-            disabled={loading}
-            className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs h-10 rounded-xl shadow-xs transition-all"
+            loading={loading}
+            className="w-full h-10"
           >
-            {loading ? "Creating Workspace..." : "Create Account"} <ArrowRight className="w-4 h-4 ml-1" />
+            Create Account <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </form>
 
-        <div className="text-center text-xs text-[#475569] pt-2">
+        <div className="text-center text-[var(--font-size-caption)] text-text-muted pt-2 border-t border-border-subtle">
           Already have an account?{" "}
-          <Link to="/login" className="font-bold text-[#2563EB] hover:underline">
+          <Link to="/login" className="font-bold text-primary hover:underline">
             Sign In
           </Link>
         </div>

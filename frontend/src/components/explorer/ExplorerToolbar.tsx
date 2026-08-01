@@ -27,19 +27,19 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
   ];
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-white border-b border-[#E2E8F0] transition-colors">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-bg-surface border-b border-border transition-colors duration-[var(--duration-normal)]">
       <div className="flex flex-1 items-center gap-2">
-        <Button onClick={onNewFolderClick} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs rounded-xl shadow-2xs">
+        <Button onClick={onNewFolderClick}>
           <Plus className="w-4 h-4 mr-1" /> New Folder
         </Button>
 
         <div className="relative flex-1 max-w-xs">
-          <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-2.5" />
           <Input
             placeholder="Search drive..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 bg-[#F8FAFC] border border-[#E2E8F0] text-xs h-8 text-[#0F172A] focus:border-[#2563EB]"
+            className="pl-8 h-8"
           />
         </div>
 
@@ -51,10 +51,10 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
               <button
                 key={f.type}
                 onClick={() => setFilter(f.type)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-md)] text-[var(--font-size-caption)] font-medium transition-all duration-[var(--duration-normal)] cursor-pointer ${
                   active
-                    ? "bg-[#DBEAFE] text-[#2563EB] border border-[#2563EB]/30 font-bold"
-                    : "text-[#475569] hover:bg-[#EFF6FF] hover:text-[#2563EB]"
+                    ? "bg-primary-light text-primary border border-primary/20 font-bold"
+                    : "text-text-secondary hover:bg-primary-light hover:text-primary"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -67,12 +67,12 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
 
       <div className="flex items-center gap-2">
         {/* Sort Selector */}
-        <div className="flex items-center gap-1 text-xs text-[#0F172A] bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-2 py-1">
-          <ArrowUpDown className="w-3.5 h-3.5 text-[#94A3B8]" />
+        <div className="flex items-center gap-1 text-[var(--font-size-caption)] text-text-primary bg-bg-sunken border border-border rounded-[var(--radius-lg)] px-2.5 py-1.5">
+          <ArrowUpDown className="w-3.5 h-3.5 text-text-muted" />
           <select
             value={sortField}
             onChange={(e) => setSortField(e.target.value as SortField)}
-            className="bg-transparent font-semibold focus:outline-hidden cursor-pointer text-xs"
+            className="bg-transparent font-medium focus:outline-hidden cursor-pointer text-[var(--font-size-caption)]"
           >
             <option value="name">Name</option>
             <option value="size">Size</option>
@@ -81,25 +81,25 @@ export function ExplorerToolbar({ onNewFolderClick }: { onNewFolderClick: () => 
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center border border-[#E2E8F0] rounded-xl p-0.5 bg-[#F8FAFC]">
+        <div className="flex items-center border border-border rounded-[var(--radius-lg)] p-0.5 bg-bg-sunken">
           <button
             onClick={() => setViewMode("list")}
             title="List View"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "list" ? "bg-white text-[#2563EB] shadow-2xs font-bold" : "text-[#94A3B8]"}`}
+            className={`p-1.5 rounded-[var(--radius-md)] transition-all duration-[var(--duration-normal)] cursor-pointer ${viewMode === "list" ? "bg-bg-surface text-primary shadow-[var(--shadow-xs)] font-bold" : "text-text-muted hover:text-text-secondary"}`}
           >
             <List className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewMode("grid")}
             title="Grid View"
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === "grid" ? "bg-white text-[#2563EB] shadow-2xs font-bold" : "text-[#94A3B8]"}`}
+            className={`p-1.5 rounded-[var(--radius-md)] transition-all duration-[var(--duration-normal)] cursor-pointer ${viewMode === "grid" ? "bg-bg-surface text-primary shadow-[var(--shadow-xs)] font-bold" : "text-text-muted hover:text-text-secondary"}`}
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
         </div>
 
         {/* Upload Button */}
-        <label className="cursor-pointer inline-flex items-center justify-center rounded-xl text-xs font-bold bg-[#2563EB] hover:bg-[#1D4ED8] text-white px-3.5 py-1.5 transition-colors shadow-2xs">
+        <label className="cursor-pointer inline-flex items-center justify-center rounded-[var(--radius-lg)] text-[var(--font-size-caption)] font-semibold bg-primary hover:bg-primary-hover active:bg-primary-active text-white px-3.5 py-1.5 transition-all duration-[var(--duration-normal)] shadow-[var(--shadow-sm)] active:scale-[0.98]">
           <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload File
           <input type="file" multiple onChange={handleFileInput} className="hidden" />
         </label>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "@/api/client";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function StorageCallbackPage() {
@@ -37,20 +37,20 @@ export function StorageCallbackPage() {
   }, [searchParams, navigate]);
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-slate-50 p-4">
-      <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-6 shadow-sm">
+    <div className="flex h-screen w-full items-center justify-center bg-bg-canvas p-4">
+      <div className="max-w-md w-full bg-bg-surface border border-border rounded-[var(--radius-2xl)] p-8 text-center space-y-6 shadow-[var(--shadow-lg)] cfx-scale-in">
         {loading ? (
           <>
-            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
-            <h1 className="text-xl font-extrabold text-slate-900">Linking Google Drive Account</h1>
-            <p className="text-slate-500 text-xs">Exchanging authorization credentials and initializing workspace root folder...</p>
+            <div className="w-12 h-12 border-3 border-primary border-t-transparent rounded-[var(--radius-full)] cfx-spin mx-auto" />
+            <h1 className="text-[var(--font-size-h3)] font-extrabold text-text-primary">Linking Google Drive Account</h1>
+            <p className="text-text-muted text-[var(--font-size-caption)]">Exchanging authorization credentials and initializing workspace root folder...</p>
           </>
         ) : (
           <>
-            <ShieldAlert className="w-12 h-12 text-red-500 mx-auto" />
-            <h1 className="text-xl font-extrabold text-slate-900">Connection Failed</h1>
-            <p className="text-slate-600 text-xs leading-relaxed">{error}</p>
-            <Button onClick={() => navigate("/dashboard/storage")} className="w-full bg-blue-600 text-white text-xs py-2 rounded-xl">
+            <ShieldAlert className="w-12 h-12 text-danger mx-auto" />
+            <h1 className="text-[var(--font-size-h3)] font-extrabold text-text-primary">Connection Failed</h1>
+            <p className="text-text-secondary text-[var(--font-size-caption)] leading-relaxed">{error}</p>
+            <Button onClick={() => navigate("/dashboard/storage")} className="w-full">
               Back to Storage Accounts
             </Button>
           </>

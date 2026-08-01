@@ -34,6 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    localStorage.removeItem("conflux_access_token");
+    localStorage.removeItem("conflux_refresh_token");
+    localStorage.removeItem("conflux_user");
+
     const res = await apiClient.post("/api/v1/auth/login/", { email, password });
     const { access, refresh, user: userData } = res.data;
 
@@ -46,6 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string) => {
+    localStorage.removeItem("conflux_access_token");
+    localStorage.removeItem("conflux_refresh_token");
+    localStorage.removeItem("conflux_user");
+
     const res = await apiClient.post("/api/v1/auth/register/", { email, password });
     const { access, refresh, user: userData } = res.data;
 

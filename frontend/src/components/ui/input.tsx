@@ -9,7 +9,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       ref={ref}
       className={twMerge(
         clsx(
-          "flex h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-900 shadow-2xs transition-colors placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-9 w-full rounded-[var(--radius-lg)] border border-border bg-bg-surface px-3 py-1 text-[var(--font-size-body)] text-text-primary shadow-[var(--shadow-xs)] transition-all duration-[var(--duration-normal)] placeholder:text-text-muted focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-border-focus disabled:cursor-not-allowed disabled:opacity-50",
           className
         )
       )}

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
-import { UserSession, SecurityEvent } from "@/types";
-import { ShieldCheck, Monitor, History, Lock, CheckCircle2, AlertCircle } from "lucide-react";
+import { UserSession } from "@/types";
+import { ShieldCheck, Monitor, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -15,13 +16,12 @@ export function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pwdMessage, setPwdMessage] = useState<string | null>(null);
   const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   const [sessions, setSessions] = useState<UserSession[]>([]);
-  const [events, setEvents] = useState<SecurityEvent[]>([]);
 
   useEffect(() => {
     apiClient.get("/api/v1/auth/active-sessions/").then((r) => setSessions(r.data)).catch(() => {});
-    apiClient.get("/api/v1/auth/audit-log/").then((r) => setEvents(r.data)).catch(() => {});
   }, []);
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -34,6 +34,7 @@ export function SettingsPage() {
       return;
     }
 
+    setPwdLoading(true);
     try {
       await apiClient.post("/api/v1/auth/change-password/", {
         current_password: currentPassword,
@@ -46,6 +47,8 @@ export function SettingsPage() {
       setConfirmPassword("");
     } catch (err: any) {
       setPwdError(err.message || "Failed to change password.");
+    } finally {
+      setPwdLoading(false);
     }
   };
 
@@ -59,39 +62,39 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-y-auto max-w-4xl">
+    <div className="flex-1 p-6 space-y-6 overflow-y-auto max-w-4xl cfx-animate-in">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="w-5 h-5 text-blue-600" />
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Security & Account Settings</h1>
+        <ShieldCheck className="w-5 h-5 text-primary" />
+        <h1 className="text-[var(--font-size-h3)] font-bold text-text-primary tracking-tight">Security & Account Settings</h1>
       </div>
 
-      {/* Account Info */}
+      {/* Account Profile */}
       <Card className="p-5 space-y-3">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Account Profile</h3>
-        <div className="flex items-center justify-between text-xs">
+        <h3 className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Account Profile</h3>
+        <div className="flex items-center justify-between text-[var(--font-size-caption)]">
           <div>
-            <p className="font-bold text-slate-900">{user?.email}</p>
-            <p className="text-slate-500">Account ID: #{user?.id}</p>
+            <p className="font-bold text-text-primary">{user?.email}</p>
+            <p className="text-text-muted">Account ID: #{user?.id}</p>
           </div>
-          <span className="bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1 rounded-full text-[10px] uppercase">
+          <Badge variant={user?.is_verified ? "success" : "default"}>
             {user?.is_verified ? "Verified Email" : "Active"}
-          </span>
+          </Badge>
         </div>
       </Card>
 
       {/* Change Password */}
       <Card className="p-5 space-y-4">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Change Password</h3>
+        <h3 className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Change Password</h3>
 
         {pwdMessage && (
-          <div className="flex items-center gap-2 p-3 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-xl">
+          <div className="flex items-center gap-2 p-3 text-[var(--font-size-caption)] bg-success-light border border-success/20 text-success rounded-[var(--radius-lg)]">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{pwdMessage}</span>
           </div>
         )}
 
         {pwdError && (
-          <div className="flex items-center gap-2 p-3 text-xs bg-red-500/10 border border-red-500/20 text-red-600 rounded-xl">
+          <div className="flex items-center gap-2 p-3 text-[var(--font-size-caption)] bg-danger-light border border-danger/20 text-danger rounded-[var(--radius-lg)]">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{pwdError}</span>
           </div>
@@ -99,42 +102,42 @@ export function SettingsPage() {
 
         <form onSubmit={handleChangePassword} className="space-y-3 max-w-md">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Current Password</label>
+            <label className="text-[var(--font-size-caption)] font-semibold text-text-secondary">Current Password</label>
             <Input type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">New Password</label>
+            <label className="text-[var(--font-size-caption)] font-semibold text-text-secondary">New Password</label>
             <Input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Confirm New Password</label>
+            <label className="text-[var(--font-size-caption)] font-semibold text-text-secondary">Confirm New Password</label>
             <Input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
           </div>
-          <Button type="submit" size="sm" className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+          <Button type="submit" size="sm" loading={pwdLoading}>
             Update Password
           </Button>
         </form>
       </Card>
 
-      {/* Active Sessions */}
+      {/* Active Device Sessions */}
       <Card className="p-5 space-y-4">
         <div className="flex items-center gap-2">
-          <Monitor className="w-4 h-4 text-slate-500" />
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Device Sessions</h3>
+          <Monitor className="w-4 h-4 text-text-muted" />
+          <h3 className="text-[var(--font-size-label)] font-bold text-text-muted uppercase tracking-wider">Active Device Sessions</h3>
         </div>
 
         {sessions.length === 0 ? (
-          <p className="text-xs text-slate-400">No active device sessions found.</p>
+          <p className="text-[var(--font-size-caption)] text-text-muted">No active device sessions found.</p>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-border">
             {sessions.map((s) => (
-              <div key={s.id} className="py-2.5 flex items-center justify-between text-xs">
+              <div key={s.id} className="py-3 flex items-center justify-between text-[var(--font-size-caption)]">
                 <div>
-                  <p className="font-bold text-slate-800">{s.device_name} {s.is_current && <span className="text-blue-600">(Current)</span>}</p>
-                  <p className="text-[11px] text-slate-400">IP: {s.ip_address} • Last active: {new Date(s.last_active).toLocaleString()}</p>
+                  <p className="font-bold text-text-primary">{s.device_name} {s.is_current && <span className="text-primary font-bold">(Current)</span>}</p>
+                  <p className="text-[var(--font-size-label)] text-text-muted">IP: {s.ip_address} • Last active: {new Date(s.last_active).toLocaleString()}</p>
                 </div>
                 {!s.is_current && (
-                  <Button onClick={() => handleRevokeSession(s.id)} variant="outline" size="sm" className="text-[11px] text-red-600">
+                  <Button onClick={() => handleRevokeSession(s.id)} variant="outline" size="sm" className="text-danger hover:bg-danger-light">
                     Revoke Access
                   </Button>
                 )}
