@@ -139,6 +139,9 @@ class ActivityLog(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+        ]
 
     def __str__(self):
         return f"{self.user.email} - {self.action} - {self.timestamp}"

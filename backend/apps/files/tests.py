@@ -73,7 +73,7 @@ class FileViewSetTests(TestCase):
 
             # Upload Chunk 1
             payload1 = {
-                'upload_id': 'test-session-uuid-999',
+                'upload_id': 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
                 'chunk_index': 0,
                 'total_chunks': 2,
                 'name': 'assembled_test.bin',
@@ -85,7 +85,7 @@ class FileViewSetTests(TestCase):
 
             # Upload Chunk 2 (Final)
             payload2 = {
-                'upload_id': 'test-session-uuid-999',
+                'upload_id': 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
                 'chunk_index': 1,
                 'total_chunks': 2,
                 'name': 'assembled_test.bin',

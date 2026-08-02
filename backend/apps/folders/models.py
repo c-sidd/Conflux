@@ -21,6 +21,9 @@ class Folder(models.Model):
 
     class Meta:
         unique_together = ('name', 'parent', 'user') # A user cannot have two folders with same name in the same parent
+        indexes = [
+            models.Index(fields=['user', 'parent', 'is_trashed']),
+        ]
 
     def __str__(self):
         return f"{self.name} (User: {self.user.email})"

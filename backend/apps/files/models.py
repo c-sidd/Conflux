@@ -22,6 +22,10 @@ class File(models.Model):
 
     class Meta:
         unique_together = ('name', 'folder', 'user') # Name must be unique within a folder per user
+        indexes = [
+            models.Index(fields=['user', 'folder', 'is_trashed']),
+            models.Index(fields=['user', 'is_favorite', 'is_trashed']),
+        ]
 
     def __str__(self):
         return f"{self.name} (ID: {self.provider_file_id})"

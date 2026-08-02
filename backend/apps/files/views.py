@@ -292,19 +292,30 @@ class FileViewSet(viewsets.ModelViewSet):
     def upload_chunk(self, request):
         import os
         import shutil
+        import uuid
         from django.conf import settings
-        from django.core.files.base import ContentFile
+        from django.utils.text import get_valid_filename
 
-        upload_id = request.data.get('upload_id')
+        raw_upload_id = request.data.get('upload_id')
         chunk_index = request.data.get('chunk_index')
         total_chunks = request.data.get('total_chunks')
-        filename = request.data.get('name')
+        raw_filename = request.data.get('name')
         folder_id = request.data.get('folder_id')
         mime_type = request.data.get('mime_type', 'application/octet-stream')
         chunk_file = request.FILES.get('file')
 
-        if not all([upload_id, chunk_index is not None, total_chunks is not None, filename, chunk_file]):
+        if not all([raw_upload_id, chunk_index is not None, total_chunks is not None, raw_filename, chunk_file]):
             return Response({'error': 'Missing required parameters'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Security Sanitization: Prevent Path Traversal
+        try:
+            upload_id = str(uuid.UUID(str(raw_upload_id)))
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid upload_id format. Must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = get_valid_filename(os.path.basename(str(raw_filename)))
+        if not filename:
+            filename = f"upload_{upload_id[:8]}.bin"
 
         try:
             chunk_index = int(chunk_index)

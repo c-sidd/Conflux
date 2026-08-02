@@ -152,9 +152,10 @@ class StorageManager:
         parent_id = self.ensure_folder_on_account(account, provider, folder_id=folder_id)
         result = provider.upload_file(file_obj, filename, mime_type, parent_id=parent_id)
         
-        # Update local quota
-        account.used_storage += result.get('size', size)
-        account.save()
+        # Update local quota atomically
+        added_size = result.get('size', size)
+        StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + added_size)
+        account.refresh_from_db()
         
         # Log activity
         ActivityLog.objects.create(
@@ -188,8 +189,8 @@ class StorageManager:
         
         success = provider.delete_file(provider_file_id)
         if success:
-            account.used_storage = max(0, account.used_storage - size)
-            account.save()
+            StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') - size)
+            account.refresh_from_db()
             
             # Log activity
             ActivityLog.objects.create(
@@ -235,9 +236,10 @@ class StorageManager:
         target_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=target_folder_id)
         result = provider.copy_file(provider_file_id, new_name, parent_id=target_provider_parent)
         
-        # Update local storage quota
-        account.used_storage += result.get('size', 0)
-        account.save()
+        # Update local storage quota atomically
+        copied_size = result.get('size', 0)
+        StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + copied_size)
+        account.refresh_from_db()
         
         return {
             'account_id': account.id,
