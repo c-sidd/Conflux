@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { UserSession } from "@/types";
-import { ShieldCheck, Monitor, CheckCircle2, AlertCircle } from "lucide-react";
+import { ShieldCheck, Monitor, CheckCircle2, AlertCircle, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -20,8 +20,13 @@ export function SettingsPage() {
 
   const [sessions, setSessions] = useState<UserSession[]>([]);
 
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+
   useEffect(() => {
-    apiClient.get("/api/v1/auth/active-sessions/").then((r) => setSessions(r.data)).catch(() => {});
+    apiClient.get("/api/v1/auth/active-sessions/")
+      .then((r) => setSessions(Array.isArray(r.data) ? r.data : (r.data.sessions || [])))
+      .catch(() => {});
   }, []);
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -46,9 +51,24 @@ export function SettingsPage() {
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
-      setPwdError(err.message || "Failed to change password.");
+      const msg = err?.response?.data?.message || err?.response?.data?.detail || err?.message;
+      setPwdError(msg || "Failed to change password.");
     } finally {
       setPwdLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setResendMessage(null);
+    try {
+      const res = await apiClient.post("/api/v1/auth/resend-verification/");
+      setResendMessage(res.data.message || "Verification email sent! Check your inbox.");
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message;
+      setResendMessage(msg || "Failed to send verification email.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -76,11 +96,39 @@ export function SettingsPage() {
             <p className="font-bold text-text-primary">{user?.email}</p>
             <p className="text-text-muted">Account ID: #{user?.id}</p>
           </div>
-          <Badge variant={user?.is_verified ? "success" : "default"}>
-            {user?.is_verified ? "Verified Email" : "Active"}
+          <Badge variant={user?.is_verified ? "success" : "warning"}>
+            {user?.is_verified ? "Verified Email" : "Unverified"}
           </Badge>
         </div>
       </Card>
+
+      {/* Email Verification Banner — shown only for unverified accounts */}
+      {user && !user.is_verified && (
+        <Card className="p-5 space-y-3 border-warning/30 bg-warning-light">
+          <div className="flex items-start gap-3">
+            <Mail className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-[var(--font-size-caption)] font-bold text-text-primary">Email Address Not Verified</h3>
+              <p className="text-[var(--font-size-label)] text-text-secondary mt-0.5">
+                A verification link was sent to <strong>{user.email}</strong> when you registered.
+                If you didn't receive it, click below to resend.
+              </p>
+              {resendMessage && (
+                <p className="text-[var(--font-size-label)] font-semibold text-primary mt-2">{resendMessage}</p>
+              )}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleResendVerification}
+            loading={resendLoading}
+            className="ml-8"
+          >
+            Resend Verification Email
+          </Button>
+        </Card>
+      )}
 
       {/* Change Password */}
       <Card className="p-5 space-y-4">

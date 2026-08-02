@@ -14,7 +14,7 @@ class FolderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = Folder.objects.filter(user=self.request.user)
+        qs = Folder.objects.filter(user=self.request.user).select_related('parent')
         include_trashed = self.request.query_params.get('include_trashed', 'false').lower() == 'true'
         if not include_trashed:
             qs = qs.filter(is_trashed=False)

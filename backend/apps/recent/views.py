@@ -17,8 +17,8 @@ class RecentView(APIView):
         yesterday_start = today_start - timedelta(days=1)
         this_week_start = today_start - timedelta(days=7)
 
-        files = File.objects.filter(user=request.user, is_trashed=False).order_by('-updated_at')[:50]
-        folders = Folder.objects.filter(user=request.user, is_trashed=False).order_by('-updated_at')[:30]
+        files = File.objects.filter(user=request.user, is_trashed=False).select_related('storage_account').order_by('-updated_at')[:50]
+        folders = Folder.objects.filter(user=request.user, is_trashed=False).select_related('parent').order_by('-updated_at')[:30]
 
         file_serializer = FileSerializer(files, many=True)
         folder_serializer = FolderSerializer(folders, many=True)

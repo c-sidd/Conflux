@@ -5,6 +5,8 @@ import { AuthProvider } from "@/context/AuthContext";
 import { AppRoutes } from "@/routes/AppRoutes";
 import { Toaster } from "sonner";
 
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -19,13 +21,16 @@ export const queryClient = new QueryClient({
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-          <Toaster position="bottom-right" richColors />
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRoutes />
+            <Toaster position="bottom-right" richColors />
+          </BrowserRouter>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
+

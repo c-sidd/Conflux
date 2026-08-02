@@ -16,8 +16,8 @@ class TrashListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        trashed_files = File.objects.filter(user=request.user, is_trashed=True)
-        trashed_folders = Folder.objects.filter(user=request.user, is_trashed=True)
+        trashed_files = File.objects.filter(user=request.user, is_trashed=True).select_related('storage_account')
+        trashed_folders = Folder.objects.filter(user=request.user, is_trashed=True).select_related('parent')
         
         file_serializer = FileSerializer(trashed_files, many=True)
         folder_serializer = FolderSerializer(trashed_folders, many=True)

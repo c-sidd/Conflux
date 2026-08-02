@@ -1,10 +1,11 @@
 import React from "react";
-import { ExplorerProvider, useExplorer } from "@/components/explorer/ExplorerContext";
+import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { ExplorerGrid } from "@/components/explorer/ExplorerGrid";
 import { Star } from "lucide-react";
 
-function FavoritesContent() {
+export function FavoritesPage() {
   const { setFilter } = useExplorer();
+
   React.useEffect(() => {
     setFilter("favorites");
   }, [setFilter]);
@@ -19,13 +20,5 @@ function FavoritesContent() {
         <ExplorerGrid />
       </div>
     </div>
-  );
-}
-
-export function FavoritesPage() {
-  return (
-    <ExplorerProvider>
-      <FavoritesContent />
-    </ExplorerProvider>
   );
 }

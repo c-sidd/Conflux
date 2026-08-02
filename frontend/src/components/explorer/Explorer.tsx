@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ExplorerProvider, useExplorer } from "./ExplorerContext";
+import { useExplorer } from "./ExplorerContext";
 import { ExplorerToolbar } from "./ExplorerToolbar";
 import { ExplorerBreadcrumb } from "./ExplorerBreadcrumb";
 import { ExplorerGrid } from "./ExplorerGrid";
@@ -18,12 +18,16 @@ import { Button } from "@/components/ui/button";
 import { apiClient } from "@/api/client";
 import emptyFolderIllustration from "@/assets/illustrations/empty-folder.svg";
 
-function ExplorerContent() {
+export function Explorer() {
   const {
     viewMode, loading, files, folders, currentFolderId, selectedIds,
     uploadQueue, cancelUpload, retryUpload, clearUploadQueue,
-    refreshExplorer, renameItem, deleteSelected
+    refreshExplorer, renameItem, deleteSelected, setFilter
   } = useExplorer();
+
+  React.useEffect(() => {
+    setFilter("all");
+  }, [setFilter]);
 
   const [newFolderModalOpen, setNewFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -220,13 +224,5 @@ function ExplorerContent() {
         </div>
       )}
     </div>
-  );
-}
-
-export function Explorer() {
-  return (
-    <ExplorerProvider>
-      <ExplorerContent />
-    </ExplorerProvider>
   );
 }

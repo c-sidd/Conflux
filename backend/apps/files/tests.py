@@ -53,3 +53,50 @@ class FileViewSetTests(TestCase):
         self.assertEqual(res_resp.status_code, 200)
         self.file.refresh_from_db()
         self.assertFalse(self.file.is_trashed)
+
+    def test_chunked_upload_flow(self):
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        import io
+
+        chunk1 = SimpleUploadedFile("file.bin", b"part1")
+        chunk2 = SimpleUploadedFile("file.bin", b"part2")
+
+        # Mock the StorageManager.upload_file response
+        with patch('apps.storage.manager.StorageManager.upload_file') as mock_upload:
+            mock_upload.return_value = {
+                'account_id': self.account.id,
+                'provider_file_id': 'gdrive_chunked_123',
+                'size': 10,
+                'web_view_link': 'https://drive.google.com/chunked_123'
+            }
+
+            # Upload Chunk 1
+            payload1 = {
+                'upload_id': 'test-session-uuid-999',
+                'chunk_index': 0,
+                'total_chunks': 2,
+                'name': 'assembled_test.bin',
+                'file': chunk1
+            }
+            response1 = self.client.post('/api/v1/files/upload-chunk/', payload1, format='multipart')
+            self.assertEqual(response1.status_code, 200)
+            self.assertTrue(response1.data['success'])
+
+            # Upload Chunk 2 (Final)
+            payload2 = {
+                'upload_id': 'test-session-uuid-999',
+                'chunk_index': 1,
+                'total_chunks': 2,
+                'name': 'assembled_test.bin',
+                'file': chunk2
+            }
+            response2 = self.client.post('/api/v1/files/upload-chunk/', payload2, format='multipart')
+            self.assertEqual(response2.status_code, 201)
+            self.assertEqual(response2.data['name'], 'assembled_test.bin')
+            self.assertEqual(response2.data['size'], 10)
+
+            # Confirm file object created in DB
+            db_file = File.objects.get(name='assembled_test.bin', user=self.user)
+            self.assertEqual(db_file.provider_file_id, 'gdrive_chunked_123')
+

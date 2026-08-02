@@ -27,7 +27,8 @@ export function VerifyEmailPage() {
         setMessage(res.data.message || "Your email address has been verified!");
       } catch (err: any) {
         setSuccess(false);
-        setMessage(err.message || "Verification failed or token expired.");
+        const serverMsg = err?.response?.data?.message || err?.response?.data?.detail || err?.message;
+        setMessage(serverMsg || "Verification failed or token expired.");
       } finally {
         setLoading(false);
       }

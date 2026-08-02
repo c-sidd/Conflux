@@ -20,7 +20,7 @@ class FileViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        qs = File.objects.filter(user=self.request.user)
+        qs = File.objects.filter(user=self.request.user).select_related('storage_account')
         include_trashed = self.request.query_params.get('include_trashed', 'false').lower() == 'true'
         if not include_trashed:
             qs = qs.filter(is_trashed=False)
@@ -288,6 +288,99 @@ class FileViewSet(viewsets.ModelViewSet):
             logger.error(f"Error streaming file download: {str(e)}")
             return Response({'error': f"Download failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=False, methods=['post'], url_path='upload-chunk')
+    def upload_chunk(self, request):
+        import os
+        import shutil
+        from django.conf import settings
+        from django.core.files.base import ContentFile
+
+        upload_id = request.data.get('upload_id')
+        chunk_index = request.data.get('chunk_index')
+        total_chunks = request.data.get('total_chunks')
+        filename = request.data.get('name')
+        folder_id = request.data.get('folder_id')
+        mime_type = request.data.get('mime_type', 'application/octet-stream')
+        chunk_file = request.FILES.get('file')
+
+        if not all([upload_id, chunk_index is not None, total_chunks is not None, filename, chunk_file]):
+            return Response({'error': 'Missing required parameters'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            chunk_index = int(chunk_index)
+            total_chunks = int(total_chunks)
+            if folder_id:
+                folder_id = int(folder_id)
+        except ValueError:
+            return Response({'error': 'Invalid chunk indices or folder id'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create temporary storage directory
+        temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads', upload_id)
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Save current chunk to disk
+        chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}')
+        with open(chunk_path, 'wb+') as destination:
+            for chunk in chunk_file.chunks():
+                destination.write(chunk)
+
+        # Check if we have received all chunks
+        received_chunks = len([f for f in os.listdir(temp_dir) if f.startswith('chunk_')])
+        if received_chunks == total_chunks:
+            # Reassemble file
+            assembled_path = os.path.join(temp_dir, filename)
+            with open(assembled_path, 'wb') as assembled_file:
+                for i in range(total_chunks):
+                    curr_chunk_path = os.path.join(temp_dir, f'chunk_{i}')
+                    if not os.path.exists(curr_chunk_path):
+                        return Response({'error': f'Missing chunk index {i}'}, status=status.HTTP_400_BAD_REQUEST)
+                    with open(curr_chunk_path, 'rb') as f:
+                        assembled_file.write(f.read())
+
+            # Read assembled file into Django file object format
+            manager = StorageManager(user=request.user)
+            try:
+                file_size = os.path.getsize(assembled_path)
+                with open(assembled_path, 'rb') as final_file:
+                    upload_result = manager.upload_file(
+                        file_obj=final_file,
+                        filename=filename,
+                        mime_type=mime_type,
+                        size=file_size,
+                        folder_id=folder_id
+                    )
+
+                storage_account = StorageAccount.objects.get(id=upload_result['account_id'])
+
+                file_instance = File.objects.create(
+                    name=filename,
+                    user=request.user,
+                    folder_id=folder_id if folder_id else None,
+                    storage_account=storage_account,
+                    provider_file_id=upload_result['provider_file_id'],
+                    size=upload_result['size'],
+                    mime_type=mime_type,
+                    web_view_link=upload_result['web_view_link']
+                )
+
+                # Clean up temporary uploads folder
+                shutil.rmtree(temp_dir)
+
+                serializer = self.get_serializer(file_instance)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            except Exception as e:
+                logger.error(f"Error uploading reassembled file: {str(e)}")
+                # Clean up temporary folder anyway
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return Response({'error': f'Upload assembly failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+        return Response({
+            'success': True,
+            'message': f'Chunk {chunk_index} received successfully ({received_chunks}/{total_chunks})'
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='simulate')
     def simulate(self, request):
         filename = request.data.get('name')
@@ -307,3 +400,5 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({'error': result.get('error')}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response(result, status=status.HTTP_200_OK)
+
+

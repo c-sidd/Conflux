@@ -32,6 +32,11 @@ urlpatterns = [
     path('sessions/revoke-all/', RevokeAllSessionsView.as_view(), name='revoke_all_sessions'),
     path('sessions/<int:session_id>/revoke/', RevokeSessionByIdView.as_view(), name='revoke_session_by_id'),
 
+    # Aliases used by frontend (active-sessions prefix)
+    path('active-sessions/', UserSessionsView.as_view(), name='active_sessions'),
+    path('active-sessions/revoke-all/', RevokeAllSessionsView.as_view(), name='revoke_all_sessions_alias'),
+    path('active-sessions/<int:session_id>/revoke/', RevokeSessionByIdView.as_view(), name='revoke_session_by_id_alias'),
+
     # Security Overview & Audit Logs
     path('security-dashboard/', SecurityDashboardView.as_view(), name='security_dashboard'),
 ]

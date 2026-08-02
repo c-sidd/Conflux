@@ -97,6 +97,9 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   const clearSelection = () => setSelectedIds(new Set());
 
   const uploadFiles = async (newFiles: File[]) => {
+    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunk size
+    const CHUNK_THRESHOLD = 5 * 1024 * 1024; // 5MB threshold
+
     for (const file of newFiles) {
       const uploadId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const newItem: UploadQueueItem = {
@@ -110,53 +113,116 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
       };
 
       setUploadQueue((prev) => [newItem, ...prev]);
-
-      const formData = new FormData();
-      formData.append("file", file);
-      if (currentFolderId) formData.append("folder", currentFolderId.toString());
-
       const startTime = Date.now();
 
-      try {
-        await apiClient.post("/api/v1/files/", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              const elapsedSeconds = (Date.now() - startTime) / 1000 || 0.1;
-              const speedMBps = progressEvent.loaded / (1024 * 1024 * elapsedSeconds);
-              const remainingBytes = progressEvent.total - progressEvent.loaded;
-              const etaSeconds = Math.max(1, Math.round(remainingBytes / (progressEvent.loaded / elapsedSeconds || 1)));
+      if (file.size > CHUNK_THRESHOLD) {
+        // --- Chunked Upload Flow ---
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        let success = true;
+        let lastResponseData: any = null;
 
-              setUploadQueue((prev) =>
-                prev.map((q) =>
-                  q.id === uploadId
-                    ? { ...q, progress: percent, speedMBps: parseFloat(speedMBps.toFixed(1)), etaSeconds }
-                    : q
-                )
-              );
-            }
-          },
-        });
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+          const start = chunkIndex * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, file.size);
+          const chunkBlob = file.slice(start, end);
 
-        setUploadQueue((prev) =>
-          prev.map((q) => (q.id === uploadId ? { ...q, progress: 100, status: "completed" } : q))
-        );
+          const formData = new FormData();
+          formData.append("upload_id", uploadId);
+          formData.append("chunk_index", chunkIndex.toString());
+          formData.append("total_chunks", totalChunks.toString());
+          formData.append("name", file.name);
+          formData.append("mime_type", file.type || "application/octet-stream");
+          formData.append("file", chunkBlob, file.name);
+          if (currentFolderId) formData.append("folder_id", currentFolderId.toString());
 
-        toast.success(`Uploaded "${file.name}" successfully!`);
-      } catch (err: any) {
-        setUploadQueue((prev) =>
-          prev.map((q) =>
-            q.id === uploadId
-              ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Upload failed" }
-              : q
-          )
-        );
-        toast.error(`Failed to upload "${file.name}"`);
+          try {
+            const res = await apiClient.post("/api/v1/files/upload-chunk/", formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+            lastResponseData = res.data;
+
+            // Update progress based on chunks sent
+            const percent = Math.round(((chunkIndex + 1) * 100) / totalChunks);
+            const elapsedSeconds = (Date.now() - startTime) / 1000 || 0.1;
+            const speedMBps = end / (1024 * 1024 * elapsedSeconds);
+            const remainingBytes = file.size - end;
+            const etaSeconds = Math.max(1, Math.round(remainingBytes / (end / elapsedSeconds || 1)));
+
+            setUploadQueue((prev) =>
+              prev.map((q) =>
+                q.id === uploadId
+                  ? { ...q, progress: percent, speedMBps: parseFloat(speedMBps.toFixed(1)), etaSeconds }
+                  : q
+              )
+            );
+          } catch (err: any) {
+            success = false;
+            setUploadQueue((prev) =>
+              prev.map((q) =>
+                q.id === uploadId
+                  ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Chunk upload failed" }
+                  : q
+              )
+            );
+            toast.error(`Failed to upload "${file.name}" at chunk ${chunkIndex + 1}/${totalChunks}`);
+            break;
+          }
+        }
+
+        if (success) {
+          setUploadQueue((prev) =>
+            prev.map((q) => (q.id === uploadId ? { ...q, progress: 100, status: "completed" } : q))
+          );
+          toast.success(`Uploaded "${file.name}" successfully!`);
+        }
+      } else {
+        // --- Single Shot Upload Flow ---
+        const formData = new FormData();
+        formData.append("file", file);
+        if (currentFolderId) formData.append("folder", currentFolderId.toString());
+
+        try {
+          await apiClient.post("/api/v1/files/", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total) {
+                const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                const elapsedSeconds = (Date.now() - startTime) / 1000 || 0.1;
+                const speedMBps = progressEvent.loaded / (1024 * 1024 * elapsedSeconds);
+                const remainingBytes = progressEvent.total - progressEvent.loaded;
+                const etaSeconds = Math.max(1, Math.round(remainingBytes / (progressEvent.loaded / elapsedSeconds || 1)));
+
+                setUploadQueue((prev) =>
+                  prev.map((q) =>
+                    q.id === uploadId
+                      ? { ...q, progress: percent, speedMBps: parseFloat(speedMBps.toFixed(1)), etaSeconds }
+                      : q
+                  )
+                );
+              }
+            },
+          });
+
+          setUploadQueue((prev) =>
+            prev.map((q) => (q.id === uploadId ? { ...q, progress: 100, status: "completed" } : q))
+          );
+
+          toast.success(`Uploaded "${file.name}" successfully!`);
+        } catch (err: any) {
+          setUploadQueue((prev) =>
+            prev.map((q) =>
+              q.id === uploadId
+                ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Upload failed" }
+                : q
+            )
+          );
+          toast.error(`Failed to upload "${file.name}"`);
+        }
       }
     }
     refreshExplorer();
   };
+
 
   const cancelUpload = (id: string) => {
     setUploadQueue((prev) => prev.filter((q) => q.id !== id));
