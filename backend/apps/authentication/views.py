@@ -328,6 +328,7 @@ class GoogleLoginView(APIView):
             from rest_framework_simplejwt.tokens import RefreshToken
             refresh = RefreshToken.for_user(user)
             refresh_str = str(refresh)
+            refresh.access_token['session_jti'] = str(refresh['jti'])
             access_str = str(refresh.access_token)
 
             SessionService.create_session(user=user, refresh_token_str=refresh_str, request=request)

@@ -14,11 +14,22 @@ env = environ.Env()
 environ.Env.read_env(BASE_DIR.parent / '.env')
 
 # Security Settings
-SECRET_KEY = env('SECRET_KEY', default='c0nflux_pr0duct10n_s3cr3t_k3y_98213_x9z_l0ng_and_sec129038102938')
-
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+DEFAULT_SECRET_KEY = 'c0nflux_pr0duct10n_s3cr3t_k3y_98213_x9z_l0ng_and_sec129038102938'
+SECRET_KEY = env('SECRET_KEY', default=DEFAULT_SECRET_KEY)
+
+DEFAULT_ENCRYPTION_KEY = 'HPXRYlXiMVE88R5mJ9WUmOSZXVANWFba'
+ENCRYPTION_KEY = env('ENCRYPTION_KEY', default=DEFAULT_ENCRYPTION_KEY)
+
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+    if SECRET_KEY == DEFAULT_SECRET_KEY:
+        raise ImproperlyConfigured("SECRET_KEY must be explicitly set in the production environment.")
+    if ENCRYPTION_KEY == DEFAULT_ENCRYPTION_KEY:
+        raise ImproperlyConfigured("ENCRYPTION_KEY must be explicitly set in the production environment.")
+
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
 
 # Application definition
@@ -157,7 +168,6 @@ SIMPLE_JWT = {
 # OAuth & Encryption Settings
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
-ENCRYPTION_KEY = env('ENCRYPTION_KEY', default='HPXRYlXiMVE88R5mJ9WUmOSZXVANWFba')
 WORKSPACE_FOLDER_NAME = env('WORKSPACE_FOLDER_NAME', default='Conflux')
 
 # Celery Configuration
@@ -176,7 +186,7 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # CORS & CSRF Security Settings
-CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=True)
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
@@ -205,6 +215,22 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Cookie security flags
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+
+    # HSTS Settings
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Redirect HTTP to HTTPS
+    SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)
 
 # Logging Configuration
 LOGGING = {

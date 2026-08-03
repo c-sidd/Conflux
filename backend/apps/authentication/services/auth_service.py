@@ -31,6 +31,8 @@ class AuthService:
 
         refresh = RefreshToken.for_user(user)
         refresh_str = str(refresh)
+        # Embed refresh JTI into access token so middleware can correlate sessions
+        refresh.access_token['session_jti'] = str(refresh['jti'])
         access_str = str(refresh.access_token)
 
         # Track session
@@ -78,6 +80,8 @@ class AuthService:
 
         refresh = RefreshToken.for_user(user)
         refresh_str = str(refresh)
+        # Embed refresh JTI into access token so middleware can correlate sessions
+        refresh.access_token['session_jti'] = str(refresh['jti'])
         access_str = str(refresh.access_token)
 
         # Track active session

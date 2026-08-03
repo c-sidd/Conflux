@@ -16,10 +16,18 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt gunicorn uvicorn
 # Copy complete project codebase
 COPY . /app
 
+# Create staticfiles directory and non-root user for security
+RUN mkdir -p /app/backend/staticfiles && \
+    useradd -u 1000 -U -d /app/backend -s /bin/bash appuser && \
+    chown -R appuser:appuser /app
+
 EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/backend
 ENV PORT=8000
 
-CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 4 --timeout 120 --access-logfile - --error-logfile - --log-level debug dcs.wsgi:application"]
+USER appuser
+
+# Collect static files and run Gunicorn server
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate --noinput && gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 4 --timeout 120 --access-logfile - --error-logfile - --log-level debug dcs.wsgi:application"]

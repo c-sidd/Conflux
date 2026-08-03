@@ -20,7 +20,7 @@ class SessionActivityMiddleware:
             raw_token = auth_header.split(' ')[1]
             try:
                 access_token = AccessToken(raw_token)
-                jti = access_token.get('jti')
+                jti = access_token.get('session_jti') or access_token.get('jti')
                 if jti:
                     # Check if session exists and is active
                     session = UserSession.objects.filter(refresh_token_jti=jti).first()

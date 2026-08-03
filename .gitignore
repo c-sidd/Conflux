@@ -4,21 +4,31 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.sqlite3
-.env
 staticfiles/
 media/
+temp_uploads/
 
-# Node / Next.js
+# Environment configurations
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+
+# Node / Frontend Build
 node_modules/
+dist/
 .next/
 out/
 build/
 .DS_Store
 
-# IDEs
+# IDEs / System
 .idea/
 .vscode/
 *.swp
+Thumbs.db
+desktop.ini
 
 # Logs
 logs/

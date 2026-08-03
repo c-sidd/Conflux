@@ -1,4 +1,5 @@
 from typing import BinaryIO, Dict, Any, Type, List
+from django.db import models
 from .models import StorageAccount, ActivityLog
 from .providers.base import StorageProvider
 from .providers.google import GoogleDriveProvider

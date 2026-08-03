@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 class GoogleDriveProvider(StorageProvider):
     def __init__(self, access_token: str, refresh_token: str):
+        if not settings.GOOGLE_CLIENT_ID:
+            logger.info("GOOGLE_CLIENT_ID is empty. GoogleDriveProvider running in MOCK mode.")
+            self.service = None
+            return
         self.credentials = Credentials(
             token=access_token,
             refresh_token=refresh_token,
@@ -25,20 +29,14 @@ class GoogleDriveProvider(StorageProvider):
         status_code = e.resp.status
         content = e.content.decode('utf-8') if e.content else ""
         logger.error(
-            f"Google Drive API Request Failed!\n"
-            f"Endpoint: {endpoint}\n"
-            f"HTTP Status: {status_code}\n"
-            f"Error details: {content}"
+            f"Google Drive API Request Failed! "
+            f"Endpoint: {endpoint} | HTTP Status: {status_code} | Error: {content}"
         )
-        # Output directly to stdout/stderr for easy debugging
-        print(f"--- GOOGLE API ERROR ---")
-        print(f"Endpoint: {endpoint}")
-        print(f"HTTP Status: {status_code}")
-        print(f"Response: {content}")
-        print(f"------------------------")
         raise e
 
     def get_quota(self) -> Tuple[int, int]:
+        if not self.service:
+            return 15 * 1024 * 1024 * 1024, 1024 * 1024
         endpoint = "drive.about.get"
         try:
             logger.info("Executing API request: drive.about.get(fields='storageQuota')")
@@ -56,6 +54,9 @@ class GoogleDriveProvider(StorageProvider):
             raise e
 
     def get_or_create_folder(self, folder_name: str, parent_id: str = None) -> str:
+        if not self.service:
+            import uuid
+            return f"mock_folder_{uuid.uuid4().hex[:8]}"
         endpoint = "drive.files.list/create"
         try:
             q = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -96,6 +97,17 @@ class GoogleDriveProvider(StorageProvider):
         return self.get_or_create_folder(WORKSPACE_FOLDER_NAME)
 
     def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, parent_id: str = None) -> Dict[str, Any]:
+        if not self.service:
+            import uuid
+            # Read input file to get its size
+            file_obj.seek(0, io.SEEK_END)
+            file_size = file_obj.tell()
+            file_obj.seek(0)
+            return {
+                'provider_file_id': f"mock_file_{uuid.uuid4().hex[:8]}",
+                'size': file_size,
+                'web_view_link': f"https://drive.google.com/mock/{uuid.uuid4().hex}"
+            }
         endpoint = "drive.files.create"
         try:
             file_metadata = {'name': filename}
@@ -125,6 +137,8 @@ class GoogleDriveProvider(StorageProvider):
 
 
     def download_file(self, provider_file_id: str) -> BinaryIO:
+        if not self.service:
+            return io.BytesIO(b"Simulated Google Drive file contents from Conflux mock provider.")
         endpoint = f"drive.files.get_media(fileId='{provider_file_id}')"
         try:
             logger.info(f"Executing API request: drive.files.get_media for fileId: {provider_file_id}")
@@ -144,6 +158,8 @@ class GoogleDriveProvider(StorageProvider):
             raise e
 
     def delete_file(self, provider_file_id: str) -> bool:
+        if not self.service:
+            return True
         endpoint = f"drive.files.delete(fileId='{provider_file_id}')"
         try:
             logger.info(f"Executing API request: drive.files.delete for fileId: {provider_file_id}")
@@ -161,6 +177,8 @@ class GoogleDriveProvider(StorageProvider):
             return False
 
     def rename_object(self, provider_file_id: str, new_name: str) -> bool:
+        if not self.service:
+            return True
         endpoint = f"drive.files.update(fileId='{provider_file_id}', name='{new_name}')"
         try:
             logger.info(f"Executing API request: {endpoint}")
@@ -178,6 +196,8 @@ class GoogleDriveProvider(StorageProvider):
             return False
 
     def move_object(self, provider_file_id: str, previous_parent_id: str, new_parent_id: str) -> bool:
+        if not self.service:
+            return True
         endpoint = f"drive.files.update(fileId='{provider_file_id}', addParents='{new_parent_id}', removeParents='{previous_parent_id}')"
         try:
             logger.info(f"Executing API request: {endpoint}")
@@ -199,6 +219,13 @@ class GoogleDriveProvider(StorageProvider):
             return False
 
     def copy_file(self, provider_file_id: str, new_name: str, parent_id: str = None) -> Dict[str, Any]:
+        if not self.service:
+            import uuid
+            return {
+                'provider_file_id': f"mock_copy_{uuid.uuid4().hex[:8]}",
+                'size': 100,
+                'web_view_link': f"https://drive.google.com/mock/{uuid.uuid4().hex}"
+            }
         endpoint = f"drive.files.copy(fileId='{provider_file_id}')"
         try:
             logger.info(f"Executing API request: drive.files.copy for fileId: {provider_file_id}")
