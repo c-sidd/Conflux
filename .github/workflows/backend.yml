@@ -25,6 +25,7 @@ jobs:
       - name: Check Django Deployment Security
         env:
           SECRET_KEY: "ci-secret-key-testing-only"
+          ENCRYPTION_KEY: "ci-encrypt-key-testing-32-chars"
           DATABASE_URL: "sqlite:///ci.sqlite3"
         run: |
           python backend/manage.py check --deploy
@@ -32,6 +33,7 @@ jobs:
       - name: Run Django Tests
         env:
           SECRET_KEY: "ci-secret-key-testing-only"
+          ENCRYPTION_KEY: "ci-encrypt-key-testing-32-chars"
           DATABASE_URL: "sqlite:///ci.sqlite3"
         run: |
           python backend/manage.py test apps.accounts apps.files apps.folders apps.storage --settings=dcs.settings
