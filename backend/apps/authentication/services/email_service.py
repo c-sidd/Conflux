@@ -32,7 +32,7 @@ class EmailService:
                 to=[user.email]
             )
             msg.attach_alternative(html_body, "text/html")
-            msg.send(fail_silently=False)
+            msg.send(fail_silently=True)
             
             logger.info(f"Password reset email dispatched to {user.email}")
             return True
@@ -66,7 +66,7 @@ class EmailService:
                 to=[user.email]
             )
             msg.attach_alternative(html_body, "text/html")
-            msg.send(fail_silently=False)
+            msg.send(fail_silently=True)
             
             logger.info(f"Verification email dispatched to {user.email}")
             return True
