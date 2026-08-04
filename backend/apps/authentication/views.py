@@ -50,8 +50,8 @@ class RegisterView(APIView):
         success, data_or_err, user = AuthService.register_user(
             email=serializer.validated_data['email'],
             password=serializer.validated_data['password'],
-            first_name=serializer.validated_data['first_name'],
-            last_name=serializer.validated_data['last_name'],
+            first_name=serializer.validated_data.get('first_name', ''),
+            last_name=serializer.validated_data.get('last_name', ''),
             origin=get_origin(request),
             request=request
         )
@@ -75,7 +75,7 @@ class LoginView(APIView):
         success, data_or_err, user = AuthService.login_user(
             email=serializer.validated_data['email'],
             password=serializer.validated_data['password'],
-            remember_me=serializer.validated_data['remember_me'],
+            remember_me=serializer.validated_data.get('remember_me', False),
             request=request
         )
 
