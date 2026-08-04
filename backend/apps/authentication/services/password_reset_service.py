@@ -41,10 +41,16 @@ class PasswordResetService:
             used=False
         )
 
-        AuditService.log_event(user=user, event_type='FORGOT_PASSWORD', request=request)
-
-        # Send email with raw token
-        EmailService.send_password_reset_email(user=user, raw_token=raw_token, origin=origin)
+        # Send email with raw token in background thread
+        import threading
+        try:
+            threading.Thread(
+                target=EmailService.send_password_reset_email,
+                kwargs={'user': user, 'raw_token': raw_token, 'origin': origin},
+                daemon=True
+            ).start()
+        except Exception as e:
+            logger.error(f"Error triggering background password reset email: {str(e)}")
         return True
 
     @staticmethod

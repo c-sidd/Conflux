@@ -38,11 +38,16 @@ class AuthService:
         # Track session
         SessionService.create_session(user=user, refresh_token_str=refresh_str, request=request)
 
-        # Trigger verification email
+        # Trigger verification email in background thread to prevent SMTP connection blocking
+        import threading
         try:
-            VerificationService.send_verification_email(user=user, origin=origin, request=request)
+            threading.Thread(
+                target=VerificationService.send_verification_email,
+                kwargs={'user': user, 'origin': origin, 'request': request},
+                daemon=True
+            ).start()
         except Exception as e:
-            logger.error(f"Error triggering verification email on register: {str(e)}")
+            logger.error(f"Error triggering background verification email: {str(e)}")
 
         AuditService.log_event(user=user, event_type='LOGIN', request=request, metadata={'action': 'register'})
 
