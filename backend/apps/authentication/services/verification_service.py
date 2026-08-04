@@ -16,8 +16,19 @@ class VerificationService:
         """
         Generates email verification token and dispatches verification email.
         """
-        if user.is_verified:
-            return True
+        from apps.accounts.models import User
+        if isinstance(user, int):
+            try:
+                user = User.objects.get(pk=user)
+            except User.DoesNotExist:
+                logger.warning(f"User ID {user} no longer exists. Skipping verification email.")
+                return False
+
+        try:
+            if user.is_verified:
+                return True
+        except Exception:
+            return False
 
         raw_token = TokenService.generate_raw_token()
         token_hash = TokenService.hash_token(raw_token)

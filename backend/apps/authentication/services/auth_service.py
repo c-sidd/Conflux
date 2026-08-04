@@ -43,7 +43,7 @@ class AuthService:
         try:
             threading.Thread(
                 target=VerificationService.send_verification_email,
-                kwargs={'user': user, 'origin': origin, 'request': request},
+                kwargs={'user': user.id, 'origin': origin, 'request': None},
                 daemon=True
             ).start()
         except Exception as e:
