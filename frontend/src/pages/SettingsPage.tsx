@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { apiClient } from "@/api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import { UserSession } from "@/types";
 import { ShieldCheck, Monitor, CheckCircle2, AlertCircle, Mail } from "lucide-react";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function SettingsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -18,16 +20,16 @@ export function SettingsPage() {
   const [pwdError, setPwdError] = useState<string | null>(null);
   const [pwdLoading, setPwdLoading] = useState(false);
 
-  const [sessions, setSessions] = useState<UserSession[]>([]);
-
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiClient.get("/api/v1/auth/active-sessions/")
-      .then((r) => setSessions(Array.isArray(r.data) ? r.data : (r.data.sessions || [])))
-      .catch(() => {});
-  }, []);
+  const { data: sessions = [] } = useQuery<UserSession[]>({
+    queryKey: ["active_sessions"],
+    queryFn: async () => {
+      const r = await apiClient.get("/api/v1/auth/active-sessions/");
+      return Array.isArray(r.data) ? r.data : (r.data.sessions || []);
+    },
+  });
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,7 +77,7 @@ export function SettingsPage() {
   const handleRevokeSession = async (id: number) => {
     try {
       await apiClient.post(`/api/v1/auth/active-sessions/${id}/revoke/`);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      queryClient.invalidateQueries({ queryKey: ["active_sessions"] });
     } catch (e) {
       alert("Failed to revoke session");
     }

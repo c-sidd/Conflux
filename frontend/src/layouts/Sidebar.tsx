@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { NavLink } from "react-router-dom";
 import {
   Folder, HardDrive, Star, Clock, Trash2, ShieldCheck, Activity, Plus
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import { StorageAccount } from "@/types";
 
 export function Sidebar() {
-  const [accounts, setAccounts] = useState<StorageAccount[]>([]);
-
-  useEffect(() => {
-    apiClient.get("/api/v1/storage/accounts/").then((res) => {
-      setAccounts(res.data);
-    }).catch(console.error);
-  }, []);
+  const { data: accounts = [] } = useQuery<StorageAccount[]>({
+    queryKey: ["storage_accounts"],
+    queryFn: async () => (await apiClient.get("/api/v1/storage/accounts/")).data,
+  });
 
   const navItems = [
     { to: "/dashboard", label: "My Files", icon: Folder },

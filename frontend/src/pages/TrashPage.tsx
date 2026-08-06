@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { apiClient } from "@/api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileItem, FolderItem } from "@/types";
 import { Trash2, RotateCcw, Folder, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,38 +8,30 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 
 export function TrashPage() {
-  const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([]);
-  const [trashedFolders, setTrashedFolders] = useState<FolderItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const loadTrash = async () => {
-    setLoading(true);
-    try {
+  const { data: trashData = { files: [], folders: [] }, isLoading: loading } = useQuery({
+    queryKey: ["trash"],
+    queryFn: async () => {
       const res = await apiClient.get("/api/v1/trash/");
       if (Array.isArray(res.data)) {
-        setTrashedFiles(res.data);
-        setTrashedFolders([]);
-      } else {
-        setTrashedFiles(res.data.files || []);
-        setTrashedFolders(res.data.folders || []);
+        return { files: res.data, folders: [] };
       }
-    } catch (e: any) {
-      console.error(e);
-      toast.error("Failed to load trash contents.");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return {
+        files: res.data.files || [],
+        folders: res.data.folders || [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadTrash();
-  }, []);
+  const trashedFiles = trashData.files;
+  const trashedFolders = trashData.folders;
 
   const handleRestore = async (id: number, type: "file" | "folder") => {
     try {
       await apiClient.post(`/api/v1/trash/${id}/restore/`, { type });
       toast.success(`${type === "folder" ? "Folder" : "File"} restored successfully!`);
-      loadTrash();
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
     } catch (e: any) {
       toast.error(e.message || "Failed to restore item.");
     }
@@ -49,7 +42,7 @@ export function TrashPage() {
     try {
       await apiClient.delete(`/api/v1/trash/${id}/permanent/?type=${type}`);
       toast.success(`${type === "folder" ? "Folder" : "File"} deleted permanently.`);
-      loadTrash();
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
     } catch (e: any) {
       toast.error(e.message || "Failed to delete item.");
     }
@@ -60,7 +53,7 @@ export function TrashPage() {
     try {
       await apiClient.post("/api/v1/trash/empty/");
       toast.success("Trash emptied successfully.");
-      loadTrash();
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
     } catch (e: any) {
       toast.error(e.message || "Failed to empty trash.");
     }
@@ -123,7 +116,7 @@ export function TrashPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {/* Trashed Folders */}
-              {trashedFolders.map((folder) => (
+              {trashedFolders.map((folder: FolderItem) => (
                 <tr key={`folder-${folder.id}`} className="hover:bg-bg-sunken transition-colors duration-[var(--duration-fast)]">
                   <td className="py-2.5 px-4 font-bold text-text-primary flex items-center gap-2.5">
                     <Folder className="w-4 h-4 text-brand-gold shrink-0" />
@@ -144,7 +137,7 @@ export function TrashPage() {
               ))}
 
               {/* Trashed Files */}
-              {trashedFiles.map((file) => (
+              {trashedFiles.map((file: FileItem) => (
                 <tr key={`file-${file.id}`} className="hover:bg-bg-sunken transition-colors duration-[var(--duration-fast)]">
                   <td className="py-2.5 px-4 font-bold text-text-primary flex items-center gap-2.5">
                     <FileText className="w-4 h-4 text-primary shrink-0" />

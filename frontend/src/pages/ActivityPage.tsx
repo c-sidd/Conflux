@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { apiClient } from "@/api/client";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity, Upload, Download, Edit3, Move, Trash2, RotateCcw, Link2, Search, Clock
 } from "lucide-react";
@@ -16,18 +17,13 @@ interface ActivityItem {
 }
 
 export function ActivityPage() {
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAction, setSelectedAction] = useState<string>("all");
 
-  useEffect(() => {
-    apiClient
-      .get("/api/v1/storage/activities/")
-      .then((res) => setActivities(res.data))
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: activities = [], isLoading: loading } = useQuery<ActivityItem[]>({
+    queryKey: ["activities"],
+    queryFn: async () => (await apiClient.get("/api/v1/storage/activities/")).data,
+  });
 
   const getActionBadge = (action: string) => {
     switch (action) {

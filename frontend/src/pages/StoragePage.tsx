@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { apiClient } from "@/api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { StorageAccount } from "@/types";
 import { HardDrive, Plus, RefreshCw, AlertTriangle, Trash2, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,23 +10,12 @@ import { StorageAnalyticsChart } from "@/components/StorageAnalyticsChart";
 import cloudConnectIllustration from "@/assets/illustrations/cloud-connect.svg";
 
 export function StoragePage() {
-  const [accounts, setAccounts] = useState<StorageAccount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const loadAccounts = async () => {
-    try {
-      const res = await apiClient.get("/api/v1/storage/accounts/");
-      setAccounts(res.data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAccounts();
-  }, []);
+  const { data: accounts = [], isLoading: loading } = useQuery<StorageAccount[]>({
+    queryKey: ["storage_accounts"],
+    queryFn: async () => (await apiClient.get("/api/v1/storage/accounts/")).data,
+  });
 
   const handleConnectGoogle = async () => {
     try {
@@ -42,7 +32,7 @@ export function StoragePage() {
   const handleSyncQuota = async (id: number) => {
     try {
       await apiClient.post(`/api/v1/storage/accounts/${id}/sync-quota/`);
-      loadAccounts();
+      queryClient.invalidateQueries({ queryKey: ["storage_accounts"] });
     } catch (e: any) {
       alert(e.message || "Failed to sync quota");
     }
@@ -52,7 +42,7 @@ export function StoragePage() {
     if (!confirm("Are you sure you want to disconnect this storage account?")) return;
     try {
       await apiClient.delete(`/api/v1/storage/accounts/${id}/`);
-      loadAccounts();
+      queryClient.invalidateQueries({ queryKey: ["storage_accounts"] });
     } catch (e: any) {
       alert(e.message || "Failed to disconnect account");
     }
