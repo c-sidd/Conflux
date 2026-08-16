@@ -1,10 +1,12 @@
+import logging
 from typing import BinaryIO, Dict, Any, Type, List
 from django.db import models
 from .models import StorageAccount, ActivityLog
 from .providers.base import StorageProvider
 from .providers.google import GoogleDriveProvider
 from .strategies import PlacementStrategy, MostFreeSpaceStrategy, RoundRobinStrategy, BestFitStrategy
-from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 class StorageManager:
     """
@@ -29,8 +31,7 @@ class StorageManager:
         provider_class = self.PROVIDER_MAP.get(account.provider)
         if not provider_class:
             raise ValueError(f"Provider {account.provider} not supported.")
-        
-        # Ensure access token is refreshed automatically if expired
+
         refreshed = account.refresh_access_token()
         if not refreshed and account.health_status == 'expired_token':
             raise Exception(f"OAuth connection for {account.nickname} has expired. Please re-authenticate.")
@@ -41,12 +42,9 @@ class StorageManager:
         )
 
     def get_active_accounts(self) -> List[StorageAccount]:
-        """
-        Returns only explicitly connected, active and healthy storage accounts.
-        """
         return list(StorageAccount.objects.filter(
-            user=self.user, 
-            is_active=True, 
+            user=self.user,
+            is_active=True,
             health_status='healthy'
         ))
 
@@ -54,30 +52,20 @@ class StorageManager:
         accounts = self.get_active_accounts()
         if not accounts:
             raise Exception("No active storage accounts connected.")
-        
-        # Apply the selected placement strategy
+
         strategy = self.strategy_class()
-        
-        # If strategy is Round Robin, we need the last used account ID to calculate next
         if isinstance(strategy, RoundRobinStrategy):
-            # Fetch last uploaded file to find last used account
             from apps.files.models import File
-            last_file = File.objects.filter(user=self.user).order_by('-created_at').first()
+            last_file = File.objects.filter(user=self.user).select_related('storage_account').order_by('-created_at').first()
             if last_file:
                 strategy.last_account_id = last_file.storage_account.id
-                
+
         return strategy.select_account(accounts, required_size)
 
     def simulate_placement(self, filename: str, file_size: int) -> Dict[str, Any]:
-        """
-        Simulates file placement and returns projected metrics.
-        """
         accounts = self.get_active_accounts()
         if not accounts:
-            return {
-                "success": False,
-                "error": "No active storage accounts connected."
-            }
+            return {"success": False, "error": "No active storage accounts connected."}
 
         try:
             account = self.select_best_account(required_size=file_size)
@@ -92,15 +80,12 @@ class StorageManager:
                 "file_size": file_size
             }
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def ensure_workspace_root(self, account: StorageAccount, provider: StorageProvider) -> str:
         if account.workspace_folder_id:
             return account.workspace_folder_id
-        
+
         if hasattr(provider, 'get_or_create_workspace_root'):
             ws_id = provider.get_or_create_workspace_root()
             account.workspace_folder_id = ws_id
@@ -112,14 +97,13 @@ class StorageManager:
         ws_root_id = self.ensure_workspace_root(account, provider)
         if not folder_id:
             return ws_root_id
-            
+
         from apps.folders.models import Folder, StorageFolder
         try:
             target_folder = Folder.objects.get(id=folder_id, user=self.user)
         except Folder.DoesNotExist:
             return ws_root_id
 
-        # Build parent chain from top-level down to target_folder
         chain = []
         curr = target_folder
         while curr:
@@ -149,16 +133,13 @@ class StorageManager:
     def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, size: int = 0, folder_id: int = None) -> Dict[str, Any]:
         account = self.select_best_account(required_size=size)
         provider = self._get_provider_instance(account)
-        
         parent_id = self.ensure_folder_on_account(account, provider, folder_id=folder_id)
         result = provider.upload_file(file_obj, filename, mime_type, parent_id=parent_id)
-        
-        # Update local quota atomically
+
         added_size = result.get('size', size)
         StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + added_size)
         account.refresh_from_db()
-        
-        # Log activity
+
         ActivityLog.objects.create(
             user=self.user,
             action='upload',
@@ -169,7 +150,7 @@ class StorageManager:
                 'drive_email': account.provider_email
             }
         )
-        
+
         return {
             'account_id': account.id,
             'provider': account.provider,
@@ -177,7 +158,6 @@ class StorageManager:
             'size': result['size'],
             'web_view_link': result['web_view_link']
         }
-
 
     def download_file(self, account_id: int, provider_file_id: str) -> BinaryIO:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
@@ -187,13 +167,10 @@ class StorageManager:
     def delete_file(self, account_id: int, provider_file_id: str, filename: str = "", size: int = 0) -> bool:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
         provider = self._get_provider_instance(account)
-        
         success = provider.delete_file(provider_file_id)
         if success:
             StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') - size)
             account.refresh_from_db()
-            
-            # Log activity
             ActivityLog.objects.create(
                 user=self.user,
                 action='delete',
@@ -205,7 +182,7 @@ class StorageManager:
                 }
             )
         return success
-    
+
     def rename_file(self, account_id: int, provider_file_id: str, new_name: str) -> bool:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
         provider = self._get_provider_instance(account)
@@ -213,7 +190,7 @@ class StorageManager:
 
     def rename_folder(self, folder_id: int, new_name: str) -> bool:
         from apps.folders.models import StorageFolder
-        mappings = StorageFolder.objects.filter(folder_id=folder_id, folder__user=self.user)
+        mappings = StorageFolder.objects.filter(folder_id=folder_id, folder__user=self.user).select_related('storage_account')
         success = True
         for mapping in mappings:
             try:
@@ -236,12 +213,9 @@ class StorageManager:
         provider = self._get_provider_instance(account)
         target_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=target_folder_id)
         result = provider.copy_file(provider_file_id, new_name, parent_id=target_provider_parent)
-        
-        # Update local storage quota atomically
         copied_size = result.get('size', 0)
         StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + copied_size)
         account.refresh_from_db()
-        
         return {
             'account_id': account.id,
             'provider_file_id': result['provider_file_id'],
@@ -260,9 +234,8 @@ class StorageManager:
         def add_folder_to_zip(zip_file, f_id: int, current_path: str = ""):
             folder_obj = Folder.objects.get(id=f_id, user=self.user)
             folder_path = f"{current_path}{folder_obj.name}/" if current_path else f"{folder_obj.name}/"
-            
-            # Add files in current folder
-            folder_files = File.objects.filter(folder_id=f_id, user=self.user, is_trashed=False)
+
+            folder_files = File.objects.filter(folder_id=f_id, user=self.user, is_trashed=False).select_related('storage_account')
             for fi in folder_files:
                 try:
                     stream = self.download_file(fi.storage_account.id, fi.provider_file_id)
@@ -270,7 +243,6 @@ class StorageManager:
                 except Exception as e:
                     logger.error(f"Error packing file {fi.name} into ZIP: {str(e)}")
 
-            # Add subfolders recursively
             subfolders = Folder.objects.filter(parent_id=f_id, user=self.user, is_trashed=False)
             for sf in subfolders:
                 add_folder_to_zip(zip_file, sf.id, folder_path)
@@ -291,8 +263,6 @@ class StorageManager:
                 account.used_storage = used
                 account.health_status = 'healthy'
                 account.save()
-            except Exception as e:
-                # Update status
+            except Exception:
                 account.health_status = 'offline'
                 account.save()
-
