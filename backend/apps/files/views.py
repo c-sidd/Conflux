@@ -20,10 +20,24 @@ class FileViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        qs = File.objects.filter(user=self.request.user).select_related('storage_account')
+        qs = File.objects.filter(user=self.request.user).select_related('storage_account', 'folder')
         include_trashed = self.request.query_params.get('include_trashed', 'false').lower() == 'true'
         if not include_trashed:
             qs = qs.filter(is_trashed=False)
+
+        # Explorer requests only need the current folder. Without this filter,
+        # the previous implementation serialized the user's entire file tree
+        # on every dashboard load.
+        folder_id = self.request.query_params.get('folder_id')
+        if folder_id is not None:
+            if folder_id.lower() in ('root', 'null', ''):
+                qs = qs.filter(folder__isnull=True)
+            else:
+                try:
+                    qs = qs.filter(folder_id=int(folder_id))
+                except (TypeError, ValueError):
+                    qs = qs.none()
+
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -89,7 +103,6 @@ class FileViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs, partial=partial)
 
     def perform_destroy(self, instance):
-        # Soft delete by default
         instance.is_trashed = True
         instance.save()
         ActivityLog.objects.create(
@@ -191,17 +204,18 @@ class FileViewSet(viewsets.ModelViewSet):
     def permanent_delete(self, request, pk=None):
         file_instance = File.objects.get(id=pk, user=request.user)
         manager = StorageManager(user=request.user)
+        filename = file_instance.name
         manager.delete_file(
             account_id=file_instance.storage_account.id,
             provider_file_id=file_instance.provider_file_id,
-            filename=file_instance.name,
+            filename=filename,
             size=file_instance.size
         )
         file_instance.delete()
         ActivityLog.objects.create(
             user=request.user,
             action='permanent_delete',
-            details={'filename': file_instance.name}
+            details={'filename': filename}
         )
         return Response({'message': 'File permanently deleted'}, status=status.HTTP_200_OK)
 
@@ -247,7 +261,6 @@ class FileViewSet(viewsets.ModelViewSet):
     def check_duplicate(self, request):
         filename = request.data.get('name')
         folder_id = request.data.get('folder_id')
-        size = request.data.get('size')
 
         existing = File.objects.filter(
             user=request.user,
@@ -307,7 +320,6 @@ class FileViewSet(viewsets.ModelViewSet):
         if not all([raw_upload_id, chunk_index is not None, total_chunks is not None, raw_filename, chunk_file]):
             return Response({'error': 'Missing required parameters'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Security Sanitization: Prevent Path Traversal
         try:
             upload_id = str(uuid.UUID(str(raw_upload_id)))
         except (ValueError, TypeError):
@@ -320,25 +332,23 @@ class FileViewSet(viewsets.ModelViewSet):
         try:
             chunk_index = int(chunk_index)
             total_chunks = int(total_chunks)
+            if chunk_index < 0 or total_chunks <= 0 or chunk_index >= total_chunks:
+                raise ValueError
             if folder_id:
                 folder_id = int(folder_id)
-        except ValueError:
+        except (ValueError, TypeError):
             return Response({'error': 'Invalid chunk indices or folder id'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create temporary storage directory
         temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads', upload_id)
         os.makedirs(temp_dir, exist_ok=True)
 
-        # Save current chunk to disk
         chunk_path = os.path.join(temp_dir, f'chunk_{chunk_index}')
         with open(chunk_path, 'wb+') as destination:
             for chunk in chunk_file.chunks():
                 destination.write(chunk)
 
-        # Check if we have received all chunks
         received_chunks = len([f for f in os.listdir(temp_dir) if f.startswith('chunk_')])
         if received_chunks == total_chunks:
-            # Reassemble file
             assembled_path = os.path.join(temp_dir, filename)
             with open(assembled_path, 'wb') as assembled_file:
                 for i in range(total_chunks):
@@ -348,7 +358,6 @@ class FileViewSet(viewsets.ModelViewSet):
                     with open(curr_chunk_path, 'rb') as f:
                         assembled_file.write(f.read())
 
-            # Read assembled file into Django file object format
             manager = StorageManager(user=request.user)
             try:
                 file_size = os.path.getsize(assembled_path)
@@ -374,7 +383,6 @@ class FileViewSet(viewsets.ModelViewSet):
                     web_view_link=upload_result['web_view_link']
                 )
 
-                # Clean up temporary uploads folder
                 shutil.rmtree(temp_dir)
 
                 serializer = self.get_serializer(file_instance)
@@ -382,10 +390,8 @@ class FileViewSet(viewsets.ModelViewSet):
 
             except Exception as e:
                 logger.error(f"Error uploading reassembled file: {str(e)}")
-                # Clean up temporary folder anyway
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return Response({'error': f'Upload assembly failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
         return Response({
             'success': True,
@@ -411,5 +417,3 @@ class FileViewSet(viewsets.ModelViewSet):
             return Response({'error': result.get('error')}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response(result, status=status.HTTP_200_OK)
-
-
