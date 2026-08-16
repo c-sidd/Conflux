@@ -18,6 +18,19 @@ class FolderViewSet(viewsets.ModelViewSet):
         include_trashed = self.request.query_params.get('include_trashed', 'false').lower() == 'true'
         if not include_trashed:
             qs = qs.filter(is_trashed=False)
+
+        # Return only children of the current folder for explorer loads.
+        # "root" means folders whose parent is NULL.
+        parent_id = self.request.query_params.get('parent_id')
+        if parent_id is not None:
+            if parent_id.lower() in ('root', 'null', ''):
+                qs = qs.filter(parent__isnull=True)
+            else:
+                try:
+                    qs = qs.filter(parent_id=int(parent_id))
+                except (TypeError, ValueError):
+                    qs = qs.none()
+
         return qs
 
     def update(self, request, *args, **kwargs):
@@ -39,7 +52,6 @@ class FolderViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs, partial=partial)
 
     def perform_destroy(self, instance):
-        # Soft delete folder and sub-items
         instance.is_trashed = True
         instance.save()
         
@@ -88,7 +100,6 @@ class FolderViewSet(viewsets.ModelViewSet):
         if new_parent_id == folder.id:
             return Response({'error': 'Cannot move folder inside itself'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check cycle prevention
         curr = Folder.objects.filter(id=new_parent_id, user=request.user).first()
         while curr:
             if curr.id == folder.id:
@@ -136,7 +147,6 @@ class FolderViewSet(viewsets.ModelViewSet):
         folder = Folder.objects.get(id=pk, user=request.user)
         manager = StorageManager(user=request.user)
 
-        # Delete physical files & folder mappings
         def purge_folder_contents(f):
             for fi in File.objects.filter(folder=f, user=request.user):
                 manager.delete_file(fi.storage_account.id, fi.provider_file_id, fi.name, fi.size)
@@ -146,12 +156,13 @@ class FolderViewSet(viewsets.ModelViewSet):
                 sub.delete()
 
         purge_folder_contents(folder)
+        folder_name = folder.name
         folder.delete()
 
         ActivityLog.objects.create(
             user=request.user,
             action='permanent_delete',
-            details={'folder_name': folder.name}
+            details={'folder_name': folder_name}
         )
 
         return Response({'message': 'Folder permanently deleted'})
