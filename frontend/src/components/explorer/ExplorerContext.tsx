@@ -60,22 +60,27 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
     if (savedView) setViewModeState(savedView);
   }, []);
 
-  // Use TanStack Query for instant < 100ms cached file & folder data
+  const folderParam = currentFolderId === null ? "root" : String(currentFolderId);
+
+  // Cache each folder independently instead of downloading the entire user's
+  // virtual filesystem on every dashboard load.
   const { data: filesData = [], isLoading: filesLoading } = useQuery<FileItem[]>({
-    queryKey: ["files"],
-    queryFn: async () => (await apiClient.get("/api/v1/files/")).data,
+    queryKey: ["files", currentFolderId],
+    queryFn: async () =>
+      (await apiClient.get("/api/v1/files/", { params: { folder_id: folderParam } })).data,
   });
 
   const { data: foldersData = [], isLoading: foldersLoading } = useQuery<FolderItem[]>({
-    queryKey: ["folders"],
-    queryFn: async () => (await apiClient.get("/api/v1/folders/")).data,
+    queryKey: ["folders", currentFolderId],
+    queryFn: async () =>
+      (await apiClient.get("/api/v1/folders/", { params: { parent_id: folderParam } })).data,
   });
 
   const loading = filesLoading || foldersLoading;
 
   const refreshExplorer = () => {
-    queryClient.invalidateQueries({ queryKey: ["files"] });
-    queryClient.invalidateQueries({ queryKey: ["folders"] });
+    queryClient.invalidateQueries({ queryKey: ["files", currentFolderId] });
+    queryClient.invalidateQueries({ queryKey: ["folders", currentFolderId] });
   };
 
   const toggleSelection = (id: string, isMulti = false) => {
@@ -97,11 +102,11 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   const clearSelection = () => setSelectedIds(new Set());
 
   const uploadFiles = async (newFiles: File[]) => {
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunk size
-    const CHUNK_THRESHOLD = 5 * 1024 * 1024; // 5MB threshold
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const CHUNK_THRESHOLD = 5 * 1024 * 1024;
 
     for (const file of newFiles) {
-      const uploadId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const uploadId = crypto.randomUUID();
       const newItem: UploadQueueItem = {
         id: uploadId,
         name: file.name,
@@ -116,10 +121,8 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
       const startTime = Date.now();
 
       if (file.size > CHUNK_THRESHOLD) {
-        // --- Chunked Upload Flow ---
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         let success = true;
-        let lastResponseData: any = null;
 
         for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
           const start = chunkIndex * CHUNK_SIZE;
@@ -136,12 +139,10 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
           if (currentFolderId) formData.append("folder_id", currentFolderId.toString());
 
           try {
-            const res = await apiClient.post("/api/v1/files/upload-chunk/", formData, {
+            await apiClient.post("/api/v1/files/upload-chunk/", formData, {
               headers: { "Content-Type": "multipart/form-data" },
             });
-            lastResponseData = res.data;
 
-            // Update progress based on chunks sent
             const percent = Math.round(((chunkIndex + 1) * 100) / totalChunks);
             const elapsedSeconds = (Date.now() - startTime) / 1000 || 0.1;
             const speedMBps = end / (1024 * 1024 * elapsedSeconds);
@@ -160,7 +161,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
             setUploadQueue((prev) =>
               prev.map((q) =>
                 q.id === uploadId
-                  ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Chunk upload failed" }
+                  ? { ...q, status: "error", errorMsg: err.message || "Chunk upload failed" }
                   : q
               )
             );
@@ -176,7 +177,6 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
           toast.success(`Uploaded "${file.name}" successfully!`);
         }
       } else {
-        // --- Single Shot Upload Flow ---
         const formData = new FormData();
         formData.append("file", file);
         if (currentFolderId) formData.append("folder", currentFolderId.toString());
@@ -212,7 +212,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
           setUploadQueue((prev) =>
             prev.map((q) =>
               q.id === uploadId
-                ? { ...q, status: "error", errorMsg: err.response?.data?.error || "Upload failed" }
+                ? { ...q, status: "error", errorMsg: err.message || "Upload failed" }
                 : q
             )
           );
@@ -223,13 +223,16 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
     refreshExplorer();
   };
 
-
   const cancelUpload = (id: string) => {
     setUploadQueue((prev) => prev.filter((q) => q.id !== id));
   };
 
+  // Retry is currently a UI reset only; keeping the failed item visible is
+  // preferable to falsely claiming that the upload restarted.
   const retryUpload = (id: string) => {
-    setUploadQueue((prev) => prev.map((q) => (q.id === id ? { ...q, status: "uploading", progress: 0 } : q)));
+    setUploadQueue((prev) =>
+      prev.map((q) => (q.id === id ? { ...q, status: "error", errorMsg: "Select the file again to retry." } : q))
+    );
   };
 
   const clearUploadQueue = () => setUploadQueue([]);
@@ -240,11 +243,8 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
       const [type, idStr] = itemKey.split("-");
       const id = parseInt(idStr, 10);
       try {
-        if (type === "folder") {
-          await apiClient.delete(`/api/v1/folders/${id}/`);
-        } else {
-          await apiClient.delete(`/api/v1/files/${id}/`);
-        }
+        if (type === "folder") await apiClient.delete(`/api/v1/folders/${id}/`);
+        else await apiClient.delete(`/api/v1/files/${id}/`);
       } catch (err) {
         console.error(err);
       }
@@ -254,8 +254,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const toggleFavorite = async (file: FileItem) => {
-    // Optimistic UI update for instant feedback
-    queryClient.setQueryData<FileItem[]>(["files"], (old = []) =>
+    queryClient.setQueryData<FileItem[]>(["files", currentFolderId], (old = []) =>
       old.map((f) => (f.id === file.id ? { ...f, is_favorite: !f.is_favorite } : f))
     );
     try {
@@ -267,11 +266,8 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
 
   const renameItem = async (item: any, newName: string) => {
     try {
-      if (item.mime_type !== undefined) {
-        await apiClient.patch(`/api/v1/files/${item.id}/`, { name: newName });
-      } else {
-        await apiClient.patch(`/api/v1/folders/${item.id}/`, { name: newName });
-      }
+      if (item.mime_type !== undefined) await apiClient.patch(`/api/v1/files/${item.id}/`, { name: newName });
+      else await apiClient.patch(`/api/v1/folders/${item.id}/`, { name: newName });
       refreshExplorer();
     } catch (err) {
       console.error(err);
