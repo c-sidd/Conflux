@@ -12,8 +12,12 @@ logger = logging.getLogger(__name__)
 
 class GoogleDriveProvider(StorageProvider):
     def __init__(self, access_token: str, refresh_token: str):
-        if not settings.GOOGLE_CLIENT_ID:
-            logger.info("GOOGLE_CLIENT_ID is empty. GoogleDriveProvider running in MOCK mode.")
+        from django.core.exceptions import ImproperlyConfigured
+        mock_enabled = getattr(settings, 'MOCK_GOOGLE_DRIVE', settings.DEBUG)
+        if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+            if not mock_enabled:
+                raise ImproperlyConfigured("Google Drive credentials (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) are missing or empty in production!")
+            logger.info("Google Drive credentials missing. GoogleDriveProvider running in MOCK mode (development only).")
             self.service = None
             return
         self.credentials = Credentials(
@@ -198,17 +202,28 @@ class GoogleDriveProvider(StorageProvider):
     def move_object(self, provider_file_id: str, previous_parent_id: str, new_parent_id: str) -> bool:
         if not self.service:
             return True
-        endpoint = f"drive.files.update(fileId='{provider_file_id}', addParents='{new_parent_id}', removeParents='{previous_parent_id}')"
         try:
+            # If previous_parent_id is not provided, fetch the file's current parents to remove them
+            if not previous_parent_id:
+                file_info = self.service.files().get(fileId=provider_file_id, fields='parents').execute()
+                parents = file_info.get('parents', [])
+                # Exclude the target parent if it's already in the parents list to avoid redundancy
+                parents = [p for p in parents if p != new_parent_id]
+                if parents:
+                    previous_parent_id = ','.join(parents)
+
+            endpoint = f"drive.files.update(fileId='{provider_file_id}', addParents='{new_parent_id}', removeParents='{previous_parent_id}')"
             logger.info(f"Executing API request: {endpoint}")
-            req = self.service.files().update(
-                fileId=provider_file_id,
-                addParents=new_parent_id,
-                fields='id, parents'
-            )
+            
+            kwargs = {
+                'fileId': provider_file_id,
+                'addParents': new_parent_id,
+                'fields': 'id, parents'
+            }
             if previous_parent_id:
-                req.removeParents = previous_parent_id
-            req.execute()
+                kwargs['removeParents'] = previous_parent_id
+
+            self.service.files().update(**kwargs).execute()
             logger.info("Move completed successfully")
             return True
         except HttpError as e:

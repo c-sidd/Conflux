@@ -168,6 +168,7 @@ SIMPLE_JWT = {
 # OAuth & Encryption Settings
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
+MOCK_GOOGLE_DRIVE = env.bool('MOCK_GOOGLE_DRIVE', default=DEBUG)
 WORKSPACE_FOLDER_NAME = env('WORKSPACE_FOLDER_NAME', default='Conflux')
 
 # Celery Configuration

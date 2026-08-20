@@ -135,11 +135,20 @@ class StorageManager:
             else:
                 if hasattr(provider, 'get_or_create_folder'):
                     created_id = provider.get_or_create_folder(f.name, parent_id=parent_provider_id)
-                    StorageFolder.objects.create(
-                        folder=f,
-                        storage_account=account,
-                        provider_folder_id=created_id
-                    )
+                    try:
+                        StorageFolder.objects.create(
+                            folder=f,
+                            storage_account=account,
+                            provider_folder_id=created_id
+                        )
+                    except Exception as db_exc:
+                        # Rollback physical folder on provider if DB mapping creation fails
+                        logger.error(f"Failed to save StorageFolder mapping for {f.name}: {str(db_exc)}")
+                        try:
+                            provider.delete_file(created_id)
+                        except Exception as delete_exc:
+                            logger.critical(f"Orphaned provider folder! Failed to delete folder {created_id} after DB mapping failure: {str(delete_exc)}")
+                        raise db_exc
                     parent_provider_id = created_id
                 else:
                     break
@@ -190,7 +199,8 @@ class StorageManager:
         
         success = provider.delete_file(provider_file_id)
         if success:
-            StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') - size)
+            from django.db.models.functions import Greatest
+            StorageAccount.objects.filter(id=account.id).update(used_storage=Greatest(models.F('used_storage') - size, 0))
             account.refresh_from_db()
             
             # Log activity
@@ -220,6 +230,23 @@ class StorageManager:
                 provider = self._get_provider_instance(mapping.storage_account)
                 renamed = provider.rename_object(mapping.provider_folder_id, new_name)
                 if not renamed:
+                    success = False
+            except Exception:
+                success = False
+        return success
+
+    def move_folder(self, folder_id: int, new_parent_id: int = None) -> bool:
+        from apps.folders.models import Folder, StorageFolder
+        folder = Folder.objects.get(id=folder_id, user=self.user)
+        mappings = StorageFolder.objects.filter(folder=folder)
+        success = True
+        for mapping in mappings:
+            try:
+                account = mapping.storage_account
+                provider = self._get_provider_instance(account)
+                new_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=new_parent_id)
+                moved = provider.move_object(mapping.provider_folder_id, previous_parent_id=None, new_parent_id=new_provider_parent)
+                if not moved:
                     success = False
             except Exception:
                 success = False
