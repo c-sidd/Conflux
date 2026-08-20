@@ -25,15 +25,54 @@ class FolderViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         new_name = request.data.get('name')
         
+        # parent can be passed as an integer ID or None
+        new_parent_val = request.data.get('parent')
+        
+        # Determine if parent has changed
+        parent_changed = False
+        new_parent_id = None
+        if 'parent' in request.data:
+            try:
+                new_parent_id = int(new_parent_val) if new_parent_val is not None else None
+            except (ValueError, TypeError):
+                new_parent_id = None
+            
+            old_parent_id = instance.parent.id if instance.parent else None
+            if new_parent_id != old_parent_id:
+                parent_changed = True
+
+        manager = StorageManager(user=request.user)
+
+        # Handle provider folder rename
         if new_name and new_name != instance.name:
-            manager = StorageManager(user=request.user)
-            manager.rename_folder(instance.id, new_name)
+            try:
+                success = manager.rename_folder(instance.id, new_name)
+                if not success:
+                    return Response({'error': 'Provider failed to rename folder.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                return Response({'error': f'Provider failed to rename folder: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             ActivityLog.objects.create(
                 user=request.user,
                 action='rename',
                 old_path=instance.name,
                 new_path=new_name,
                 details={'folder_id': instance.id}
+            )
+
+        # Handle provider folder move
+        if parent_changed:
+            try:
+                success = manager.move_folder(instance.id, new_parent_id)
+                if not success:
+                    return Response({'error': 'Provider failed to move folder.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                return Response({'error': f'Provider failed to move folder: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            ActivityLog.objects.create(
+                user=request.user,
+                action='move',
+                details={'folder_name': instance.name, 'new_parent_id': new_parent_id}
             )
 
         return super().update(request, *args, **kwargs, partial=partial)
@@ -95,6 +134,14 @@ class FolderViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'Cannot move folder into its own descendant'}, status=status.HTTP_400_BAD_REQUEST)
             curr = curr.parent
 
+        manager = StorageManager(user=request.user)
+        try:
+            success = manager.move_folder(folder.id, new_parent_id)
+            if not success:
+                return Response({'error': 'Provider failed to move folder.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({'error': f'Provider failed to move folder: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         folder.parent_id = new_parent_id
         folder.save()
 
@@ -138,12 +185,24 @@ class FolderViewSet(viewsets.ModelViewSet):
 
         # Delete physical files & folder mappings
         def purge_folder_contents(f):
+            # 1. Delete all files in this folder
             for fi in File.objects.filter(folder=f, user=request.user):
                 manager.delete_file(fi.storage_account.id, fi.provider_file_id, fi.name, fi.size)
                 fi.delete()
+            
+            # 2. Recursively purge subfolders
             for sub in Folder.objects.filter(parent=f, user=request.user):
                 purge_folder_contents(sub)
                 sub.delete()
+
+            # 3. Delete physical folders on provider for this folder
+            from apps.folders.models import StorageFolder
+            for mapping in StorageFolder.objects.filter(folder=f):
+                try:
+                    provider = manager._get_provider_instance(mapping.storage_account)
+                    provider.delete_file(mapping.provider_folder_id)
+                except Exception as e:
+                    logger.error(f"Failed to delete physical folder {f.name} on provider: {str(e)}")
 
         purge_folder_contents(folder)
         folder.delete()
