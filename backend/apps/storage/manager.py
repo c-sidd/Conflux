@@ -1,15 +1,15 @@
+import logging
 from typing import BinaryIO, Dict, Any, Type, List
 from django.db import models
 from .models import StorageAccount, ActivityLog
 from .providers.base import StorageProvider
 from .providers.google import GoogleDriveProvider
 from .strategies import PlacementStrategy, MostFreeSpaceStrategy, RoundRobinStrategy, BestFitStrategy
-from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 class StorageManager:
-    """
-    Orchestrates file operations across multiple connected cloud storage accounts.
-    """
+    """Orchestrates file operations across multiple connected cloud storage accounts."""
 
     PROVIDER_MAP: Dict[str, Type[StorageProvider]] = {
         'google': GoogleDriveProvider,
@@ -29,8 +29,7 @@ class StorageManager:
         provider_class = self.PROVIDER_MAP.get(account.provider)
         if not provider_class:
             raise ValueError(f"Provider {account.provider} not supported.")
-        
-        # Ensure access token is refreshed automatically if expired
+
         refreshed = account.refresh_access_token()
         if not refreshed and account.health_status == 'expired_token':
             raise Exception(f"OAuth connection for {account.nickname} has expired. Please re-authenticate.")
@@ -41,12 +40,9 @@ class StorageManager:
         )
 
     def get_active_accounts(self) -> List[StorageAccount]:
-        """
-        Returns only explicitly connected, active and healthy storage accounts.
-        """
         return list(StorageAccount.objects.filter(
-            user=self.user, 
-            is_active=True, 
+            user=self.user,
+            is_active=True,
             health_status='healthy'
         ))
 
@@ -54,31 +50,20 @@ class StorageManager:
         accounts = self.get_active_accounts()
         if not accounts:
             raise Exception("No active storage accounts connected.")
-        
-        # Apply the selected placement strategy
+
         strategy = self.strategy_class()
-        
-        # If strategy is Round Robin, we need the last used account ID to calculate next
         if isinstance(strategy, RoundRobinStrategy):
-            # Fetch last uploaded file to find last used account
             from apps.files.models import File
             last_file = File.objects.filter(user=self.user).order_by('-created_at').first()
             if last_file:
                 strategy.last_account_id = last_file.storage_account.id
-                
+
         return strategy.select_account(accounts, required_size)
 
     def simulate_placement(self, filename: str, file_size: int) -> Dict[str, Any]:
-        """
-        Simulates file placement and returns projected metrics.
-        """
         accounts = self.get_active_accounts()
         if not accounts:
-            return {
-                "success": False,
-                "error": "No active storage accounts connected."
-            }
-
+            return {"success": False, "error": "No active storage accounts connected."}
         try:
             account = self.select_best_account(required_size=file_size)
             return {
@@ -92,15 +77,12 @@ class StorageManager:
                 "file_size": file_size
             }
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            logger.error("Placement simulation failed", exc_info=True)
+            return {"success": False, "error": "Unable to simulate storage placement."}
 
     def ensure_workspace_root(self, account: StorageAccount, provider: StorageProvider) -> str:
         if account.workspace_folder_id:
             return account.workspace_folder_id
-        
         if hasattr(provider, 'get_or_create_workspace_root'):
             ws_id = provider.get_or_create_workspace_root()
             account.workspace_folder_id = ws_id
@@ -112,14 +94,13 @@ class StorageManager:
         ws_root_id = self.ensure_workspace_root(account, provider)
         if not folder_id:
             return ws_root_id
-            
+
         from apps.folders.models import Folder, StorageFolder
         try:
             target_folder = Folder.objects.get(id=folder_id, user=self.user)
         except Folder.DoesNotExist:
             return ws_root_id
 
-        # Build parent chain from top-level down to target_folder
         chain = []
         curr = target_folder
         while curr:
@@ -132,61 +113,70 @@ class StorageManager:
             mapping = StorageFolder.objects.filter(folder=f, storage_account=account).first()
             if mapping:
                 parent_provider_id = mapping.provider_folder_id
-            else:
-                if hasattr(provider, 'get_or_create_folder'):
-                    created_id = provider.get_or_create_folder(f.name, parent_id=parent_provider_id)
+            elif hasattr(provider, 'get_or_create_folder'):
+                created_id = provider.get_or_create_folder(f.name, parent_id=parent_provider_id)
+                try:
+                    StorageFolder.objects.create(
+                        folder=f,
+                        storage_account=account,
+                        provider_folder_id=created_id
+                    )
+                except Exception:
+                    logger.exception("Failed to save StorageFolder mapping for %s", f.name)
                     try:
-                        StorageFolder.objects.create(
-                            folder=f,
-                            storage_account=account,
-                            provider_folder_id=created_id
-                        )
-                    except Exception as db_exc:
-                        # Rollback physical folder on provider if DB mapping creation fails
-                        logger.error(f"Failed to save StorageFolder mapping for {f.name}: {str(db_exc)}")
-                        try:
-                            provider.delete_file(created_id)
-                        except Exception as delete_exc:
-                            logger.critical(f"Orphaned provider folder! Failed to delete folder {created_id} after DB mapping failure: {str(delete_exc)}")
-                        raise db_exc
-                    parent_provider_id = created_id
-                else:
-                    break
+                        provider.delete_file(created_id)
+                    except Exception:
+                        logger.exception("Failed to roll back provider folder %s", created_id)
+                    raise
+                parent_provider_id = created_id
+            else:
+                break
 
         return parent_provider_id
 
     def upload_file(self, file_obj: BinaryIO, filename: str, mime_type: str, size: int = 0, folder_id: int = None) -> Dict[str, Any]:
         account = self.select_best_account(required_size=size)
         provider = self._get_provider_instance(account)
-        
         parent_id = self.ensure_folder_on_account(account, provider, folder_id=folder_id)
         result = provider.upload_file(file_obj, filename, mime_type, parent_id=parent_id)
-        
-        # Update local quota atomically
+        provider_file_id = result['provider_file_id']
         added_size = result.get('size', size)
-        StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + added_size)
-        account.refresh_from_db()
-        
-        # Log activity
-        ActivityLog.objects.create(
-            user=self.user,
-            action='upload',
-            details={
-                'filename': filename,
-                'size': result['size'],
-                'drive_nickname': account.nickname,
-                'drive_email': account.provider_email
-            }
-        )
-        
+
+        try:
+            StorageAccount.objects.filter(id=account.id).update(
+                used_storage=models.F('used_storage') + added_size
+            )
+            account.refresh_from_db()
+            ActivityLog.objects.create(
+                user=self.user,
+                action='upload',
+                details={
+                    'filename': filename,
+                    'size': result['size'],
+                    'drive_nickname': account.nickname,
+                    'drive_email': account.provider_email
+                }
+            )
+        except Exception:
+            logger.exception("Post-upload bookkeeping failed; attempting provider rollback")
+            try:
+                provider.delete_file(provider_file_id)
+            except Exception:
+                logger.critical(
+                    "Provider rollback failed after upload bookkeeping failure: account=%s provider_file_id=%s",
+                    account.id,
+                    provider_file_id,
+                    exc_info=True,
+                )
+            raise
+
         return {
             'account_id': account.id,
             'provider': account.provider,
-            'provider_file_id': result['provider_file_id'],
+            'provider_file_id': provider_file_id,
             'size': result['size'],
             'web_view_link': result['web_view_link']
         }
-
 
     def download_file(self, account_id: int, provider_file_id: str) -> BinaryIO:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
@@ -196,14 +186,13 @@ class StorageManager:
     def delete_file(self, account_id: int, provider_file_id: str, filename: str = "", size: int = 0) -> bool:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
         provider = self._get_provider_instance(account)
-        
         success = provider.delete_file(provider_file_id)
         if success:
             from django.db.models.functions import Greatest
-            StorageAccount.objects.filter(id=account.id).update(used_storage=Greatest(models.F('used_storage') - size, 0))
+            StorageAccount.objects.filter(id=account.id).update(
+                used_storage=Greatest(models.F('used_storage') - size, 0)
+            )
             account.refresh_from_db()
-            
-            # Log activity
             ActivityLog.objects.create(
                 user=self.user,
                 action='delete',
@@ -215,7 +204,7 @@ class StorageManager:
                 }
             )
         return success
-    
+
     def rename_file(self, account_id: int, provider_file_id: str, new_name: str) -> bool:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
         provider = self._get_provider_instance(account)
@@ -223,34 +212,57 @@ class StorageManager:
 
     def rename_folder(self, folder_id: int, new_name: str) -> bool:
         from apps.folders.models import StorageFolder
-        mappings = StorageFolder.objects.filter(folder_id=folder_id, folder__user=self.user)
-        success = True
+        mappings = list(StorageFolder.objects.filter(folder_id=folder_id, folder__user=self.user))
+        successful = []
         for mapping in mappings:
+            provider = self._get_provider_instance(mapping.storage_account)
             try:
-                provider = self._get_provider_instance(mapping.storage_account)
-                renamed = provider.rename_object(mapping.provider_folder_id, new_name)
-                if not renamed:
-                    success = False
+                if not provider.rename_object(mapping.provider_folder_id, new_name):
+                    raise RuntimeError("provider rejected folder rename")
+                successful.append((provider, mapping.provider_folder_id))
             except Exception:
-                success = False
-        return success
+                logger.exception("Folder rename failed for mapping %s", mapping.id)
+                for rollback_provider, provider_folder_id in successful:
+                    try:
+                        # The provider's previous name is not available here, so do not
+                        # attempt an unsafe rollback. The caller must not update DB on failure.
+                        logger.critical(
+                            "Partial provider folder rename detected for provider_folder_id=%s; manual reconciliation may be required.",
+                            provider_folder_id,
+                        )
+                    except Exception:
+                        logger.exception("Failed while recording partial folder rename")
+                return False
+        return True
 
     def move_folder(self, folder_id: int, new_parent_id: int = None) -> bool:
         from apps.folders.models import Folder, StorageFolder
         folder = Folder.objects.get(id=folder_id, user=self.user)
-        mappings = StorageFolder.objects.filter(folder=folder)
-        success = True
+        mappings = list(StorageFolder.objects.filter(folder=folder))
+        successful = []
         for mapping in mappings:
             try:
                 account = mapping.storage_account
                 provider = self._get_provider_instance(account)
                 new_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=new_parent_id)
-                moved = provider.move_object(mapping.provider_folder_id, previous_parent_id=None, new_parent_id=new_provider_parent)
+                moved = provider.move_object(
+                    mapping.provider_folder_id,
+                    previous_parent_id=None,
+                    new_parent_id=new_provider_parent
+                )
                 if not moved:
-                    success = False
+                    raise RuntimeError("provider rejected folder move")
+                successful.append(mapping.id)
             except Exception:
-                success = False
-        return success
+                logger.exception("Folder move failed for mapping %s", mapping.id)
+                if successful:
+                    logger.critical(
+                        "Partial provider folder move detected for folder=%s mappings=%s; manual reconciliation may be required.",
+                        folder_id,
+                        successful,
+                    )
+                return False
+        return True
 
     def move_file(self, account_id: int, provider_file_id: str, target_folder_id: int = None) -> bool:
         account = StorageAccount.objects.get(id=account_id, user=self.user)
@@ -263,12 +275,22 @@ class StorageManager:
         provider = self._get_provider_instance(account)
         target_provider_parent = self.ensure_folder_on_account(account, provider, folder_id=target_folder_id)
         result = provider.copy_file(provider_file_id, new_name, parent_id=target_provider_parent)
-        
-        # Update local storage quota atomically
         copied_size = result.get('size', 0)
-        StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + copied_size)
-        account.refresh_from_db()
-        
+        try:
+            StorageAccount.objects.filter(id=account.id).update(used_storage=models.F('used_storage') + copied_size)
+            account.refresh_from_db()
+        except Exception:
+            logger.exception("Copy bookkeeping failed; attempting provider rollback")
+            try:
+                provider.delete_file(result['provider_file_id'])
+            except Exception:
+                logger.critical(
+                    "Failed to roll back provider copy: account=%s provider_file_id=%s",
+                    account.id,
+                    result.get('provider_file_id'),
+                    exc_info=True,
+                )
+            raise
         return {
             'account_id': account.id,
             'provider_file_id': result['provider_file_id'],
@@ -287,17 +309,13 @@ class StorageManager:
         def add_folder_to_zip(zip_file, f_id: int, current_path: str = ""):
             folder_obj = Folder.objects.get(id=f_id, user=self.user)
             folder_path = f"{current_path}{folder_obj.name}/" if current_path else f"{folder_obj.name}/"
-            
-            # Add files in current folder
             folder_files = File.objects.filter(folder_id=f_id, user=self.user, is_trashed=False)
             for fi in folder_files:
                 try:
                     stream = self.download_file(fi.storage_account.id, fi.provider_file_id)
                     zip_file.writestr(f"{folder_path}{fi.name}", stream.read())
-                except Exception as e:
-                    logger.error(f"Error packing file {fi.name} into ZIP: {str(e)}")
-
-            # Add subfolders recursively
+                except Exception:
+                    logger.exception("Error packing file %s into ZIP", fi.name)
             subfolders = Folder.objects.filter(parent_id=f_id, user=self.user, is_trashed=False)
             for sf in subfolders:
                 add_folder_to_zip(zip_file, sf.id, folder_path)
@@ -318,8 +336,7 @@ class StorageManager:
                 account.used_storage = used
                 account.health_status = 'healthy'
                 account.save()
-            except Exception as e:
-                # Update status
+            except Exception:
+                logger.exception("Quota refresh failed for storage account %s", account.id)
                 account.health_status = 'offline'
-                account.save()
-
+                account.save(update_fields=['health_status'])
