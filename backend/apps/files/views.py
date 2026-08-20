@@ -48,7 +48,11 @@ class FileViewSet(viewsets.ModelViewSet):
                 size=uploaded_file.size,
                 folder_id=folder_id
             )
-            
+        except Exception as e:
+            logger.error(f"Error during file upload: {str(e)}")
+            return Response({'error': 'Upload failed due to a storage provider error.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        try:
             storage_account = StorageAccount.objects.get(id=upload_result['account_id'])
             
             file_instance = File.objects.create(
@@ -65,9 +69,28 @@ class FileViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(file_instance)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
             
-        except Exception as e:
-            logger.error(f"Error during file upload: {str(e)}")
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as db_exc:
+            logger.error(f"Database file record creation failed: {str(db_exc)}", exc_info=True)
+            # Attempt to compensate by deleting the uploaded file from the storage provider
+            try:
+                manager.delete_file(
+                    account_id=upload_result['account_id'],
+                    provider_file_id=upload_result['provider_file_id'],
+                    filename=uploaded_file.name,
+                    size=upload_result['size']
+                )
+            except Exception as rollback_exc:
+                logger.critical(
+                    f"Compensation/rollback failed! Orphaned file left in storage provider. "
+                    f"Account ID: {upload_result['account_id']}, "
+                    f"Provider File ID: {upload_result['provider_file_id']}, "
+                    f"Filename: {uploaded_file.name}, "
+                    f"Size: {upload_result['size']}. "
+                    f"Rollback error: {str(rollback_exc)}",
+                    exc_info=True
+                )
+            # Do not hide original database failure, return internal server error
+            return Response({'error': 'An error occurred while saving the file metadata.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -76,15 +99,21 @@ class FileViewSet(viewsets.ModelViewSet):
         
         if new_name and new_name != instance.name:
             manager = StorageManager(user=request.user)
-            renamed = manager.rename_file(instance.storage_account.id, instance.provider_file_id, new_name)
-            if renamed:
-                ActivityLog.objects.create(
-                    user=request.user,
-                    action='rename',
-                    old_path=instance.name,
-                    new_path=new_name,
-                    details={'file_id': instance.id, 'drive_nickname': instance.storage_account.nickname}
-                )
+            try:
+                renamed = manager.rename_file(instance.storage_account.id, instance.provider_file_id, new_name)
+                if not renamed:
+                    return Response({'error': 'Provider failed to rename file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                logger.error(f"Provider rename error: {str(e)}")
+                return Response({'error': 'Provider failed to rename file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            ActivityLog.objects.create(
+                user=request.user,
+                action='rename',
+                old_path=instance.name,
+                new_path=new_name,
+                details={'file_id': instance.id, 'drive_nickname': instance.storage_account.nickname}
+            )
         
         return super().update(request, *args, **kwargs, partial=partial)
 
@@ -109,11 +138,17 @@ class FileViewSet(viewsets.ModelViewSet):
                 target_folder_id = None
 
         manager = StorageManager(user=request.user)
-        moved_on_drive = manager.move_file(
-            account_id=file_instance.storage_account.id,
-            provider_file_id=file_instance.provider_file_id,
-            target_folder_id=target_folder_id
-        )
+        try:
+            moved_on_drive = manager.move_file(
+                account_id=file_instance.storage_account.id,
+                provider_file_id=file_instance.provider_file_id,
+                target_folder_id=target_folder_id
+            )
+            if not moved_on_drive:
+                return Response({'error': 'Provider failed to move file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"Provider move error: {str(e)}")
+            return Response({'error': 'Provider failed to move file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         old_folder_name = file_instance.folder.name if file_instance.folder else "Root"
         file_instance.folder_id = target_folder_id
@@ -189,14 +224,25 @@ class FileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['delete'], url_path='permanent-delete')
     def permanent_delete(self, request, pk=None):
-        file_instance = File.objects.get(id=pk, user=request.user)
+        try:
+            file_instance = File.objects.get(id=pk, user=request.user)
+        except File.DoesNotExist:
+            return Response({'error': 'File not found'}, status=status.HTTP_404_NOT_FOUND)
+
         manager = StorageManager(user=request.user)
-        manager.delete_file(
-            account_id=file_instance.storage_account.id,
-            provider_file_id=file_instance.provider_file_id,
-            filename=file_instance.name,
-            size=file_instance.size
-        )
+        try:
+            success = manager.delete_file(
+                account_id=file_instance.storage_account.id,
+                provider_file_id=file_instance.provider_file_id,
+                filename=file_instance.name,
+                size=file_instance.size
+            )
+            if not success:
+                return Response({'error': 'Provider failed to delete file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"Provider delete file error: {str(e)}")
+            return Response({'error': 'Provider failed to delete file.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         file_instance.delete()
         ActivityLog.objects.create(
             user=request.user,
@@ -207,6 +253,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='bulk-delete')
     def bulk_delete(self, request):
+        # Soft delete (trash) files in bulk. Physical files remain on the provider.
         file_ids = request.data.get('file_ids', [])
         files = File.objects.filter(id__in=file_ids, user=request.user)
         count = files.update(is_trashed=True)
@@ -216,9 +263,45 @@ class FileViewSet(viewsets.ModelViewSet):
     def bulk_move(self, request):
         file_ids = request.data.get('file_ids', [])
         target_folder_id = request.data.get('folder_id')
+        if target_folder_id is not None:
+            try:
+                target_folder_id = int(target_folder_id)
+            except (ValueError, TypeError):
+                target_folder_id = None
+
+        if target_folder_id:
+            from apps.folders.models import Folder
+            if not Folder.objects.filter(id=target_folder_id, user=request.user).exists():
+                return Response({'error': 'Target folder not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         files = File.objects.filter(id__in=file_ids, user=request.user)
-        count = files.update(folder_id=target_folder_id)
-        return Response({'message': f'{count} files moved successfully'})
+        
+        successful = []
+        failed = []
+        manager = StorageManager(user=request.user)
+
+        for f in files:
+            try:
+                moved = manager.move_file(
+                    account_id=f.storage_account.id,
+                    provider_file_id=f.provider_file_id,
+                    target_folder_id=target_folder_id
+                )
+                if moved:
+                    f.folder_id = target_folder_id
+                    f.save()
+                    successful.append(f.id)
+                else:
+                    failed.append({'id': f.id, 'name': f.name, 'error': 'Provider move failed'})
+            except Exception as e:
+                logger.error(f"Bulk move failed for file {f.name} (ID: {f.id}): {str(e)}")
+                failed.append({'id': f.id, 'name': f.name, 'error': str(e)})
+
+        return Response({
+            'successful': successful,
+            'failed': failed,
+            'count': len(successful)
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='bulk-download')
     def bulk_download(self, request):
@@ -229,6 +312,7 @@ class FileViewSet(viewsets.ModelViewSet):
 
         manager = StorageManager(user=request.user)
         zip_buffer = io.BytesIO()
+        failed_files = []
 
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for fi in files:
@@ -236,7 +320,14 @@ class FileViewSet(viewsets.ModelViewSet):
                     stream = manager.download_file(fi.storage_account.id, fi.provider_file_id)
                     zf.writestr(fi.name, stream.read())
                 except Exception as e:
-                    logger.error(f"Error zipping bulk download file {fi.name}: {str(e)}")
+                    logger.error(f"Error zipping bulk download file {fi.name}: {str(e)}", exc_info=True)
+                    failed_files.append((fi.name, "Download from provider failed"))
+
+            if failed_files:
+                error_report_content = "The following files failed to download and are missing from this archive:\n\n"
+                for name, reason in failed_files:
+                    error_report_content += f"- {name}: {reason}\n"
+                zf.writestr("_CONFLUX_ERRORS.txt", error_report_content)
 
         zip_buffer.seek(0)
         response = FileResponse(zip_buffer, content_type='application/zip')
@@ -280,13 +371,15 @@ class FileViewSet(viewsets.ModelViewSet):
                 action='download',
                 details={'filename': file_instance.name, 'file_id': file_instance.id}
             )
+            import urllib.parse
+            encoded_filename = urllib.parse.quote(file_instance.name)
             response = FileResponse(file_stream, content_type=file_instance.mime_type or 'application/octet-stream')
-            response['Content-Disposition'] = f'attachment; filename="{file_instance.name}"'
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_filename}"
             response['Content-Length'] = file_instance.size
             return response
         except Exception as e:
             logger.error(f"Error streaming file download: {str(e)}")
-            return Response({'error': f"Download failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': "Download failed. The file may be missing or the storage provider is unavailable."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], url_path='upload-chunk')
     def upload_chunk(self, request):
@@ -325,8 +418,9 @@ class FileViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'error': 'Invalid chunk indices or folder id'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create temporary storage directory
-        temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads', upload_id)
+        # Create temporary storage directory namespaced by user ID
+        # LIMITATION: Local filesystem chunk storage is not horizontally scalable because chunks are saved to the local instance's disk.
+        temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads', f"user_{request.user.id}", upload_id)
         os.makedirs(temp_dir, exist_ok=True)
 
         # Save current chunk to disk
@@ -384,7 +478,7 @@ class FileViewSet(viewsets.ModelViewSet):
                 logger.error(f"Error uploading reassembled file: {str(e)}")
                 # Clean up temporary folder anyway
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                return Response({'error': f'Upload assembly failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': 'Upload assembly failed. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
         return Response({
