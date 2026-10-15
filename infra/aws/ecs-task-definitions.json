@@ -1,0 +1,96 @@
+{
+  "api_task_definition": {
+    "family": "conflux-api",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "512",
+    "memory": "1024",
+    "containerDefinitions": [
+      {
+        "name": "conflux-api",
+        "image": "${ECR_REPOSITORY_URL}/conflux-api:${IMAGE_TAG}",
+        "essential": true,
+        "portMappings": [
+          {
+            "containerPort": 8000,
+            "hostPort": 8000,
+            "protocol": "tcp"
+          }
+        ],
+        "environment": [
+          { "name": "APP_ENV", "value": "production" },
+          { "name": "LOG_LEVEL", "value": "INFO" },
+          { "name": "COOKIE_SECURE", "value": "true" },
+          { "name": "COOKIE_SAMESITE", "value": "lax" },
+          { "name": "USE_FAKE_STORAGE_PROVIDER", "value": "false" },
+          { "name": "PUBLIC_APP_URL", "value": "${PUBLIC_APP_URL}" },
+          { "name": "API_PUBLIC_URL", "value": "${API_PUBLIC_URL}" },
+          { "name": "GOOGLE_REDIRECT_URI", "value": "${API_PUBLIC_URL}/api/v1/accounts/google/callback" }
+        ],
+        "secrets": [
+          { "name": "DATABASE_URL", "valueFrom": "${SECRETS_ARN}:DATABASE_URL::" },
+          { "name": "DATABASE_SYNC_URL", "valueFrom": "${SECRETS_ARN}:DATABASE_SYNC_URL::" },
+          { "name": "REDIS_URL", "valueFrom": "${SECRETS_ARN}:REDIS_URL::" },
+          { "name": "SESSION_SECRET", "valueFrom": "${SECRETS_ARN}:SESSION_SECRET::" },
+          { "name": "CSRF_SECRET", "valueFrom": "${SECRETS_ARN}:CSRF_SECRET::" },
+          { "name": "TOKEN_ENCRYPTION_KEY", "valueFrom": "${SECRETS_ARN}:TOKEN_ENCRYPTION_KEY::" },
+          { "name": "GOOGLE_CLIENT_ID", "valueFrom": "${SECRETS_ARN}:GOOGLE_CLIENT_ID::" },
+          { "name": "GOOGLE_CLIENT_SECRET", "valueFrom": "${SECRETS_ARN}:GOOGLE_CLIENT_SECRET::" }
+        ],
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/conflux-production",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "api"
+          }
+        },
+        "healthCheck": {
+          "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+          "interval": 15,
+          "timeout": 5,
+          "retries": 3,
+          "startPeriod": 15
+        }
+      }
+    ]
+  },
+  "worker_task_definition": {
+    "family": "conflux-worker",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "512",
+    "memory": "1024",
+    "containerDefinitions": [
+      {
+        "name": "conflux-worker",
+        "image": "${ECR_REPOSITORY_URL}/conflux-api:${IMAGE_TAG}",
+        "command": ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"],
+        "essential": true,
+        "environment": [
+          { "name": "APP_ENV", "value": "production" },
+          { "name": "LOG_LEVEL", "value": "INFO" },
+          { "name": "USE_FAKE_STORAGE_PROVIDER", "value": "false" }
+        ],
+        "secrets": [
+          { "name": "DATABASE_URL", "valueFrom": "${SECRETS_ARN}:DATABASE_URL::" },
+          { "name": "DATABASE_SYNC_URL", "valueFrom": "${SECRETS_ARN}:DATABASE_SYNC_URL::" },
+          { "name": "REDIS_URL", "valueFrom": "${SECRETS_ARN}:REDIS_URL::" },
+          { "name": "SESSION_SECRET", "valueFrom": "${SECRETS_ARN}:SESSION_SECRET::" },
+          { "name": "CSRF_SECRET", "valueFrom": "${SECRETS_ARN}:CSRF_SECRET::" },
+          { "name": "TOKEN_ENCRYPTION_KEY", "valueFrom": "${SECRETS_ARN}:TOKEN_ENCRYPTION_KEY::" },
+          { "name": "GOOGLE_CLIENT_ID", "valueFrom": "${SECRETS_ARN}:GOOGLE_CLIENT_ID::" },
+          { "name": "GOOGLE_CLIENT_SECRET", "valueFrom": "${SECRETS_ARN}:GOOGLE_CLIENT_SECRET::" }
+        ],
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/ecs/conflux-production",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "worker"
+          }
+        }
+      }
+    ]
+  }
+}

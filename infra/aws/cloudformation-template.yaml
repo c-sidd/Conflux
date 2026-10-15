@@ -1,0 +1,885 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Conflux Phase 1 — Production AWS Architecture: VPC, RDS PostgreSQL, ElastiCache Redis, ECS Fargate, ALB, S3/CloudFront, KMS, and Secrets Manager'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging]
+    Description: Deployment environment name
+
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+
+  UseExternalDatabase:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Set to 'true' to use Neon PostgreSQL (or another external DB) and skip AWS RDS charges. Set to 'false' to provision Amazon RDS.
+
+  DbUsername:
+    Type: String
+    Default: conflux_admin
+    Description: Master username for RDS PostgreSQL (only used if UseExternalDatabase is false)
+
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: 'ConfluxPass123!'
+    Description: Master password for RDS PostgreSQL (only used if UseExternalDatabase is false)
+
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    Description: RDS PostgreSQL instance class
+
+  DbAllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 1000
+    Description: RDS allocated storage in GB
+
+  RedisNodeType:
+    Type: String
+    Default: cache.t4g.micro
+    Description: ElastiCache Redis node type
+
+  ImageTag:
+    Type: String
+    Default: latest
+    Description: Container image tag to deploy
+
+  ApiDesiredCount:
+    Type: Number
+    Default: 2
+    Description: Desired task count for API service
+
+  WorkerDesiredCount:
+    Type: Number
+    Default: 1
+    Description: Desired task count for Celery worker service
+
+Conditions:
+  ProvisionRDS: !Equals [!Ref UseExternalDatabase, 'false']
+
+Resources:
+  # ============================================================================
+  # 1. KMS Key for OAuth Refresh Token & Database Encryption
+  # ============================================================================
+  TokenKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: 'KMS Key for Conflux Google OAuth refresh token encryption and storage'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowSecretsManagerAccess
+            Effect: Allow
+            Principal:
+              Service: secretsmanager.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+  TokenKmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/conflux-token-key-${EnvironmentName}'
+      TargetKeyId: !Ref TokenKmsKey
+
+  # ============================================================================
+  # 2. CloudWatch Log Group
+  # ============================================================================
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/conflux-${EnvironmentName}'
+      RetentionInDays: 30
+
+  # ============================================================================
+  # 3. Secrets Manager Secret
+  # ============================================================================
+  AppSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'conflux/${EnvironmentName}/secrets'
+      Description: !Sub 'Conflux ${EnvironmentName} application secrets and credentials'
+      KmsKeyId: !Ref TokenKmsKey
+      SecretString: !Sub |
+        {
+          "DATABASE_URL": "postgresql+asyncpg://${DbUsername}:${DbPassword}@placeholder-db-endpoint:5432/conflux_db",
+          "DATABASE_SYNC_URL": "postgresql://${DbUsername}:${DbPassword}@placeholder-db-endpoint:5432/conflux_db",
+          "REDIS_URL": "redis://placeholder-redis-endpoint:6379/0",
+          "SESSION_SECRET": "replace_with_openssl_rand_hex_32_characters_long",
+          "CSRF_SECRET": "replace_with_openssl_rand_hex_32_characters_long",
+          "TOKEN_ENCRYPTION_KEY": "replace_with_urlsafe_base64_32_byte_key",
+          "GOOGLE_CLIENT_ID": "placeholder_client_id.apps.googleusercontent.com",
+          "GOOGLE_CLIENT_SECRET": "placeholder_client_secret"
+        }
+
+  # ============================================================================
+  # 4. Networking: VPC, Subnets, Route Tables, NAT Gateway
+  # ============================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-vpc-${EnvironmentName}'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-igw-${EnvironmentName}'
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets (for ALB and NAT Gateway)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-public-1-${EnvironmentName}'
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-public-2-${EnvironmentName}'
+
+  # Private Subnets (for ECS Tasks, RDS, Redis)
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-private-1-${EnvironmentName}'
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-private-2-${EnvironmentName}'
+
+  # Public Routing
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-public-rt-${EnvironmentName}'
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # NAT Gateway for Secure Outbound Egress from Private Subnets
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-nat-eip-${EnvironmentName}'
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-nat-${EnvironmentName}'
+
+  # Private Routing
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-private-rt-${EnvironmentName}'
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ============================================================================
+  # 5. Security Groups
+  # ============================================================================
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow inbound HTTP/HTTPS traffic to ALB'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-alb-sg-${EnvironmentName}'
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow traffic from ALB to ECS API tasks and egress to internet'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-ecs-sg-${EnvironmentName}'
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: ProvisionRDS
+    Properties:
+      GroupDescription: 'Allow PostgreSQL access strictly from ECS tasks'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-rds-sg-${EnvironmentName}'
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow Redis access strictly from ECS tasks'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-redis-sg-${EnvironmentName}'
+
+  # ============================================================================
+  # 6. Database: RDS PostgreSQL (Optional, skipped when using Neon)
+  # ============================================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Condition: ProvisionRDS
+    Properties:
+      DBSubnetGroupDescription: 'Private subnets for Conflux PostgreSQL'
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-db-subnet-group-${EnvironmentName}'
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Condition: ProvisionRDS
+    Properties:
+      DBInstanceIdentifier: !Sub 'conflux-postgres-${EnvironmentName}'
+      Engine: postgres
+      EngineVersion: '16.3'
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: !Ref DbAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      KmsKeyId: !Ref TokenKmsKey
+      MasterUsername: !Ref DbUsername
+      MasterUserPassword: !Ref DbPassword
+      DBName: conflux_db
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'Sun:04:30-Sun:05:30'
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-rds-${EnvironmentName}'
+
+  # ============================================================================
+  # 7. Cache/Queue: Amazon ElastiCache Redis
+  # ============================================================================
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: 'Private subnets for Conflux ElastiCache Redis'
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Sub 'conflux-redis-${EnvironmentName}'
+      Engine: redis
+      CacheNodeType: !Ref RedisNodeType
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      Port: 6379
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-redis-${EnvironmentName}'
+
+  # ============================================================================
+  # 8. Frontend: Amazon S3 & CloudFront Distribution (Origin Access Control)
+  # ============================================================================
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'conflux-frontend-${EnvironmentName}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-frontend-${EnvironmentName}'
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'conflux-oac-${EnvironmentName}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  # ============================================================================
+  # 9. Application Load Balancer
+  # ============================================================================
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'conflux-alb-${EnvironmentName}'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'conflux-alb-${EnvironmentName}'
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'conflux-api-tg-${EnvironmentName}'
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ============================================================================
+  # 10. CloudFront CDN (Routing S3 Frontend & ALB API)
+  # ============================================================================
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'Conflux unified distribution for ${EnvironmentName}'
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        Origins:
+          # Origin 1: Static assets in S3
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          # Origin 2: API routes via ALB
+          - Id: ALBOrigin
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+              OriginKeepaliveTimeout: 30
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+        CacheBehaviors:
+          # Route /api/* directly to ALB with no caching and full header/cookie pass-through
+          - PathPattern: '/api/*'
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader
+        # Single Page Application fallback routing for React Router
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+  # ============================================================================
+  # 11. ECR Container Repositories
+  # ============================================================================
+  ApiRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: conflux-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  # ============================================================================
+  # 12. IAM Roles for ECS Tasks
+  # ============================================================================
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'conflux-ecs-execution-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - PolicyName: ConfluxSecretsAndKmsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Ref AppSecrets
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                Resource: !GetAtt TokenKmsKey.Arn
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'conflux-ecs-task-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: ConfluxKmsTokenCipherPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'kms:Encrypt'
+                  - 'kms:Decrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt TokenKmsKey.Arn
+
+  # ============================================================================
+  # 13. ECS Cluster, Task Definitions, and Services
+  # ============================================================================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub 'conflux-cluster-${EnvironmentName}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'conflux-api-${EnvironmentName}'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: conflux-api
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/conflux-api:${ImageTag}'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: APP_ENV
+              Value: production
+            - Name: LOG_LEVEL
+              Value: INFO
+            - Name: COOKIE_SECURE
+              Value: 'true'
+            - Name: COOKIE_SAMESITE
+              Value: lax
+            - Name: USE_FAKE_STORAGE_PROVIDER
+              Value: 'false'
+            - Name: PUBLIC_APP_URL
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+            - Name: API_PUBLIC_URL
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+            - Name: GOOGLE_REDIRECT_URI
+              Value: !Sub 'https://${CloudFrontDistribution.DomainName}/api/v1/accounts/google/callback'
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:DATABASE_URL::'
+            - Name: DATABASE_SYNC_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:DATABASE_SYNC_URL::'
+            - Name: REDIS_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:REDIS_URL::'
+            - Name: SESSION_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:SESSION_SECRET::'
+            - Name: CSRF_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:CSRF_SECRET::'
+            - Name: TOKEN_ENCRYPTION_KEY
+              ValueFrom: !Sub '${AppSecrets.Arn}:TOKEN_ENCRYPTION_KEY::'
+            - Name: GOOGLE_CLIENT_ID
+              ValueFrom: !Sub '${AppSecrets.Arn}:GOOGLE_CLIENT_ID::'
+            - Name: GOOGLE_CLIENT_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:GOOGLE_CLIENT_SECRET::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+          HealthCheck:
+            Command: ['CMD-SHELL', 'curl -f http://localhost:8000/health || exit 1']
+            Interval: 15
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 15
+
+  WorkerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'conflux-worker-${EnvironmentName}'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: conflux-worker
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/conflux-api:${ImageTag}'
+          Command: ['celery', '-A', 'app.workers.celery_app', 'worker', '--loglevel=info']
+          Essential: true
+          Environment:
+            - Name: APP_ENV
+              Value: production
+            - Name: LOG_LEVEL
+              Value: INFO
+            - Name: USE_FAKE_STORAGE_PROVIDER
+              Value: 'false'
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:DATABASE_URL::'
+            - Name: DATABASE_SYNC_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:DATABASE_SYNC_URL::'
+            - Name: REDIS_URL
+              ValueFrom: !Sub '${AppSecrets.Arn}:REDIS_URL::'
+            - Name: SESSION_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:SESSION_SECRET::'
+            - Name: CSRF_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:CSRF_SECRET::'
+            - Name: TOKEN_ENCRYPTION_KEY
+              ValueFrom: !Sub '${AppSecrets.Arn}:TOKEN_ENCRYPTION_KEY::'
+            - Name: GOOGLE_CLIENT_ID
+              ValueFrom: !Sub '${AppSecrets.Arn}:GOOGLE_CLIENT_ID::'
+            - Name: GOOGLE_CLIENT_SECRET
+              ValueFrom: !Sub '${AppSecrets.Arn}:GOOGLE_CLIENT_SECRET::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: worker
+
+  ApiService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListenerHTTP
+    Properties:
+      ServiceName: !Sub 'conflux-api-service-${EnvironmentName}'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ApiTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref ApiDesiredCount
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - ContainerName: conflux-api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ALBTargetGroup
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+
+  WorkerService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub 'conflux-worker-service-${EnvironmentName}'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref WorkerTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref WorkerDesiredCount
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: DISABLED
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+
+  # ============================================================================
+  # 14. Observability: CloudWatch Alarms
+  # ============================================================================
+  ApiCpuHighAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'conflux-api-high-cpu-${EnvironmentName}'
+      AlarmDescription: 'Alarm triggered when API service CPU utilization exceeds 80% for 5 minutes'
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSCluster
+        - Name: ServiceName
+          Value: !GetAtt ApiService.Name
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 80
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+  UnhealthyHostCountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'conflux-alb-unhealthy-hosts-${EnvironmentName}'
+      AlarmDescription: 'Alarm triggered when ALB targets become unhealthy'
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ALBTargetGroup.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+# ============================================================================
+# Outputs
+# ============================================================================
+Outputs:
+  CloudFrontURL:
+    Description: Unified HTTPS Public Application URL (CloudFront)
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID for cache invalidations
+    Value: !Ref CloudFrontDistribution
+
+  FrontendS3Bucket:
+    Description: S3 Bucket Name for static frontend deployment
+    Value: !Ref FrontendBucket
+
+  LoadBalancerDNS:
+    Description: Application Load Balancer Public DNS name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  ECRRepositoryUri:
+    Description: ECR Repository URI for backend image pushes
+    Value: !GetAtt ApiRepository.RepositoryUri
+
+  RDSAddress:
+    Condition: ProvisionRDS
+    Description: RDS PostgreSQL Private Endpoint
+    Value: !GetAtt RDSInstance.Endpoint.Address
+
+  RDSPort:
+    Condition: ProvisionRDS
+    Description: RDS PostgreSQL Port
+    Value: !GetAtt RDSInstance.Endpoint.Port
+
+  RedisAddress:
+    Description: ElastiCache Redis Private Endpoint
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+
+  RedisPort:
+    Description: ElastiCache Redis Port
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+
+  SecretsManagerArn:
+    Description: AWS Secrets Manager Secret ARN
+    Value: !Ref AppSecrets
+
+  KmsKeyArn:
+    Description: KMS Key ARN for OAuth token cipher envelope encryption
+    Value: !GetAtt TokenKmsKey.Arn
+
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster

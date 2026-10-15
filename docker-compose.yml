@@ -1,0 +1,104 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: conflux_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: conflux
+      POSTGRES_PASSWORD: conflux_dev_pass
+      POSTGRES_DB: conflux_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conflux -d conflux_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: conflux_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conflux_api
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://conflux:conflux_dev_pass@db:5432/conflux_db
+      DATABASE_SYNC_URL: postgresql://conflux:conflux_dev_pass@db:5432/conflux_db
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_APP_URL: http://localhost:5173
+      API_PUBLIC_URL: http://localhost:8000
+      SESSION_SECRET: dev_session_secret_key_at_least_32_characters_long_for_security
+      CSRF_SECRET: dev_csrf_secret_key_at_least_32_characters_long_for_security
+      TOKEN_ENCRYPTION_KEY: dGVzdF9rZXlfZm9yX2RldmVsb3BtZW50X29ubHlfMzJfYnl0ZXM=
+      USE_FAKE_STORAGE_PROVIDER: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conflux_worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://conflux:conflux_dev_pass@db:5432/conflux_db
+      DATABASE_SYNC_URL: postgresql://conflux:conflux_dev_pass@db:5432/conflux_db
+      REDIS_URL: redis://redis:6379/0
+      TOKEN_ENCRYPTION_KEY: dGVzdF9rZXlfZm9yX2RldmVsb3BtZW50X29ubHlfMzJfYnl0ZXM=
+      USE_FAKE_STORAGE_PROVIDER: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: conflux_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      BACKEND_TARGET: http://api:8000
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
