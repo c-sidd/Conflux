@@ -68,7 +68,7 @@ Write-Host "==> Pushing backend container image to Amazon ECR..." -ForegroundCol
 docker push "$EcrUri`:$ImageTag"
 docker push "$EcrUri`:latest"
 
-# Step 2: Deploy CloudFormation Stack (Image is now guaranteed to exist in ECR)
+# Step 2: Deploy CloudFormation Stack (Zero Initial Tasks to Prevent Premature Health Check Failures)
 Write-Host "==> Step 2: Deploying CloudFormation Stack ($StackName)..." -ForegroundColor Yellow
 aws cloudformation deploy `
     --template-file infra/aws/cloudformation-template.yaml `
@@ -79,7 +79,9 @@ aws cloudformation deploy `
         EnvironmentName=$Environment `
         UseExternalDatabase=$UseExternalDatabase `
         DbPassword=$DbPassword `
-        ImageTag=$ImageTag
+        ImageTag=$ImageTag `
+        ApiDesiredCount=0 `
+        WorkerDesiredCount=0
 
 Write-Host "==> Fetching stack outputs..." -ForegroundColor Yellow
 $S3Bucket = (aws cloudformation describe-stacks --stack-name $StackName --region $Region --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text).Trim()
@@ -96,66 +98,25 @@ Write-Host "Public URL:    $CfUrl" -ForegroundColor Green
 
 # Step 3: Safely merge secrets into Secrets Manager (Preserving existing keys & OAuth)
 Write-Host "==> Step 3: Populating / Merging application secrets in Secrets Manager..." -ForegroundColor Yellow
-$CurrentSecretRaw = aws secretsmanager get-secret-value --secret-id $SecretsArn --query "SecretString" --output text 2>$null
-$CurrentSecretObj = @{}
-if ($CurrentSecretRaw) {
-    try {
-        $CurrentSecretObj = $CurrentSecretRaw | ConvertFrom-Json
-    } catch {
-        $CurrentSecretObj = @{}
-    }
-}
+$env:SECRETS_ARN = $SecretsArn
+$env:AWS_REGION = $Region
+$env:NEON_DATABASE_URL = $NeonDatabaseUrl
+$env:REDIS_ADDR = if ($RedisAddr) { $RedisAddr.Trim() } else { "" }
+$env:REDIS_PORT = if ($RedisPort) { $RedisPort.Trim() } else { "6379" }
 
-# Preserve or generate key material
-$TokenKey = $CurrentSecretObj.TOKEN_ENCRYPTION_KEY
-if (-not $TokenKey -or $TokenKey -like "*replace_with*" -or $TokenKey -like "dGVzdF9*") {
-    $Bytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($Bytes)
-    $TokenKey = [System.Convert]::ToBase64String($Bytes)
-}
-
-$SessionSec = $CurrentSecretObj.SESSION_SECRET
-if (-not $SessionSec -or $SessionSec -like "*replace_with*" -or $SessionSec -like "*development*") {
-    $SessionSec = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
-}
-
-$CsrfSec = $CurrentSecretObj.CSRF_SECRET
-if (-not $CsrfSec -or $CsrfSec -like "*replace_with*" -or $CsrfSec -like "*development*") {
-    $CsrfSec = [System.Guid]::NewGuid().ToString("N") + [System.Guid]::NewGuid().ToString("N")
-}
-
-# Preserve OAuth credentials if present, or accept from environment
-$GoogleId = if ($env:GOOGLE_CLIENT_ID) { $env:GOOGLE_CLIENT_ID } elseif ($CurrentSecretObj.GOOGLE_CLIENT_ID) { $CurrentSecretObj.GOOGLE_CLIENT_ID } else { "placeholder" }
-$GoogleSec = if ($env:GOOGLE_CLIENT_SECRET) { $env:GOOGLE_CLIENT_SECRET } elseif ($CurrentSecretObj.GOOGLE_CLIENT_SECRET) { $CurrentSecretObj.GOOGLE_CLIENT_SECRET } else { "placeholder" }
-
-# Redis URL
-$RedisUrl = if ($RedisAddr) { "redis://$($RedisAddr.Trim()):$($RedisPort.Trim())/0" } elseif ($CurrentSecretObj.REDIS_URL) { $CurrentSecretObj.REDIS_URL } else { "redis://localhost:6379/0" }
-
-# Database URL
-$DbUrl = if ($UseExternalDatabase -eq "true" -and $NeonDatabaseUrl) { $NeonDatabaseUrl } elseif ($CurrentSecretObj.DATABASE_URL) { $CurrentSecretObj.DATABASE_URL } else { "" }
-$DbSyncUrl = if ($UseExternalDatabase -eq "true" -and $NeonDatabaseUrl) { $NeonDatabaseUrl } elseif ($CurrentSecretObj.DATABASE_SYNC_URL) { $CurrentSecretObj.DATABASE_SYNC_URL } else { "" }
-
-$UpdatedSecret = @{
-    DATABASE_URL = $DbUrl
-    DATABASE_SYNC_URL = $DbSyncUrl
-    REDIS_URL = $RedisUrl
-    SESSION_SECRET = $SessionSec
-    CSRF_SECRET = $CsrfSec
-    TOKEN_ENCRYPTION_KEY = $TokenKey
-    GOOGLE_CLIENT_ID = $GoogleId
-    GOOGLE_CLIENT_SECRET = $GoogleSec
-}
-
-$NewSecretJson = $UpdatedSecret | ConvertTo-Json -Compress
-aws secretsmanager put-secret-value --secret-id $SecretsArn --secret-string $NewSecretJson | Out-Null
-Write-Host "==> Secrets Manager successfully updated with preserved key material." -ForegroundColor Green
+python infra/aws/populate_secrets.py
 
 # Step 4: Run Database Migrations
 Write-Host "==> Step 4: Running database migrations on ECS against Neon..." -ForegroundColor Yellow
 & "infra/aws/run-migration.ps1" -Environment $Environment
 
-# Step 5: Build and Deploy Frontend
-Write-Host "==> Step 5: Building frontend production bundle..." -ForegroundColor Yellow
+# Step 5: Scale Up and Roll Out ECS Services
+Write-Host "==> Step 5: Scaling up and rolling out ECS services..." -ForegroundColor Yellow
+aws ecs update-service --cluster "conflux-cluster-$Environment" --service "conflux-api-service-$Environment" --desired-count 2 --force-new-deployment --region $Region | Out-Null
+aws ecs update-service --cluster "conflux-cluster-$Environment" --service "conflux-worker-service-$Environment" --desired-count 1 --force-new-deployment --region $Region | Out-Null
+
+# Step 6: Build and Deploy Frontend
+Write-Host "==> Step 6: Building frontend production bundle..." -ForegroundColor Yellow
 Push-Location frontend
 try {
     npm ci
@@ -169,11 +130,6 @@ aws s3 sync frontend/dist/ "s3://$S3Bucket/" --delete --region $Region
 
 Write-Host "==> Invalidating CloudFront cache..." -ForegroundColor Yellow
 aws cloudfront create-invalidation --distribution-id $CfDistId --paths "/*"
-
-# Step 6: Force ECS New Deployment
-Write-Host "==> Step 6: Rolling out new ECS services..." -ForegroundColor Yellow
-aws ecs update-service --cluster "conflux-cluster-$Environment" --service "conflux-api-service-$Environment" --force-new-deployment --region $Region | Out-Null
-aws ecs update-service --cluster "conflux-cluster-$Environment" --service "conflux-worker-service-$Environment" --force-new-deployment --region $Region | Out-Null
 
 Write-Host "==> Step 7: Verifying CloudFront backend health check (/api/health)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 5

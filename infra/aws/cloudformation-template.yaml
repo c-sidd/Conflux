@@ -485,7 +485,7 @@ Resources:
       Protocol: HTTP
       TargetType: ip
       VpcId: !Ref VPC
-      HealthCheckPath: /health
+      HealthCheckPath: /ready
       HealthCheckIntervalSeconds: 15
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
@@ -687,7 +687,7 @@ Resources:
             Interval: 15
             Timeout: 5
             Retries: 3
-            StartPeriod: 15
+            StartPeriod: 30
 
   WorkerTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -744,6 +744,7 @@ Resources:
       TaskDefinition: !Ref ApiTaskDefinition
       LaunchType: FARGATE
       DesiredCount: !Ref ApiDesiredCount
+      HealthCheckGracePeriodSeconds: 90
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets:

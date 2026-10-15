@@ -58,7 +58,7 @@ echo "==> Pushing backend container image to Amazon ECR..."
 docker push "${ECR_URI}:${IMAGE_TAG}"
 docker push "${ECR_URI}:latest"
 
-# Step 2: Deploy CloudFormation Stack (Image is now guaranteed to exist in ECR)
+# Step 2: Deploy CloudFormation Stack (Zero Initial Tasks to Prevent Premature Health Check Failures)
 echo "==> Step 2: Deploying CloudFormation Stack (${STACK_NAME})..."
 aws cloudformation deploy \
   --template-file infra/aws/cloudformation-template.yaml \
@@ -69,7 +69,9 @@ aws cloudformation deploy \
       EnvironmentName="${ENVIRONMENT}" \
       UseExternalDatabase="${USE_EXTERNAL_DB}" \
       DbPassword="${DB_PASSWORD}" \
-      ImageTag="${IMAGE_TAG}"
+      ImageTag="${IMAGE_TAG}" \
+      ApiDesiredCount=0 \
+      WorkerDesiredCount=0
 
 echo "==> Fetching stack outputs..."
 S3_BUCKET=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${AWS_REGION}" --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text)
@@ -86,63 +88,27 @@ echo "Public URL:    ${CF_URL}"
 
 # Step 3: Safely merge secrets into Secrets Manager (Preserving existing keys & OAuth)
 echo "==> Step 3: Populating / Merging application secrets in Secrets Manager..."
-CURRENT_SECRET=$(aws secretsmanager get-secret-value --secret-id "${SECRETS_ARN}" --query "SecretString" --output text 2>/dev/null || echo "{}")
+export SECRETS_ARN="${SECRETS_ARN}"
+export AWS_REGION="${AWS_REGION}"
+export NEON_DATABASE_URL="${NEON_DATABASE_URL}"
+export REDIS_ADDR="${REDIS_ADDR}"
+export REDIS_PORT="${REDIS_PORT}"
+export GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"
+export GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}"
 
-NEW_SECRET_JSON=$(python - <<EOF
-import json, secrets, base64
-
-try:
-    curr = json.loads('''$CURRENT_SECRET''')
-except Exception:
-    curr = {}
-
-# Preserve or generate key material
-token_key = curr.get('TOKEN_ENCRYPTION_KEY')
-if not token_key or 'replace_with' in token_key or 'dGVzdF9' in token_key:
-    token_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
-
-session_sec = curr.get('SESSION_SECRET')
-if not session_sec or 'replace_with' in session_sec or 'development' in session_sec:
-    session_sec = secrets.token_hex(32)
-
-csrf_sec = curr.get('CSRF_SECRET')
-if not csrf_sec or 'replace_with' in csrf_sec or 'development' in csrf_sec:
-    csrf_sec = secrets.token_hex(32)
-
-# Preserve OAuth credentials if present, or accept from environment
-google_id = '$GOOGLE_CLIENT_ID' if '$GOOGLE_CLIENT_ID' else curr.get('GOOGLE_CLIENT_ID', 'placeholder')
-google_sec = '$GOOGLE_CLIENT_SECRET' if '$GOOGLE_CLIENT_SECRET' else curr.get('GOOGLE_CLIENT_SECRET', 'placeholder')
-
-# Redis endpoint
-redis_url = 'redis://$REDIS_ADDR:$REDIS_PORT/0' if '$REDIS_ADDR' else curr.get('REDIS_URL', 'redis://localhost:6379/0')
-
-# Database URLs
-db_url = '$NEON_DATABASE_URL' if '$USE_EXTERNAL_DB' == 'true' and '$NEON_DATABASE_URL' else curr.get('DATABASE_URL')
-db_sync_url = '$NEON_DATABASE_URL' if '$USE_EXTERNAL_DB' == 'true' and '$NEON_DATABASE_URL' else curr.get('DATABASE_SYNC_URL')
-
-updated = {
-    'DATABASE_URL': db_url,
-    'DATABASE_SYNC_URL': db_sync_url,
-    'REDIS_URL': redis_url,
-    'SESSION_SECRET': session_sec,
-    'CSRF_SECRET': csrf_sec,
-    'TOKEN_ENCRYPTION_KEY': token_key,
-    'GOOGLE_CLIENT_ID': google_id,
-    'GOOGLE_CLIENT_SECRET': google_sec
-}
-print(json.dumps(updated))
-EOF
-)
-
-aws secretsmanager put-secret-value --secret-id "${SECRETS_ARN}" --secret-string "${NEW_SECRET_JSON}" > /dev/null
-echo "==> Secrets Manager successfully updated with preserved key material."
+python3 infra/aws/populate_secrets.py
 
 # Step 4: Run Database Migrations
 echo "==> Step 4: Running database migrations on ECS..."
 bash infra/aws/run-migration.sh "${ENVIRONMENT}"
 
-# Step 5: Build and Deploy Frontend to S3 + Invalidate CloudFront
-echo "==> Step 5: Building frontend production bundle..."
+# Step 5: Scale Up and Roll Out ECS Services
+echo "==> Step 5: Scaling up and rolling out ECS services..."
+aws ecs update-service --cluster "conflux-cluster-${ENVIRONMENT}" --service "conflux-api-service-${ENVIRONMENT}" --desired-count 2 --force-new-deployment --region "${AWS_REGION}" > /dev/null
+aws ecs update-service --cluster "conflux-cluster-${ENVIRONMENT}" --service "conflux-worker-service-${ENVIRONMENT}" --desired-count 1 --force-new-deployment --region "${AWS_REGION}" > /dev/null
+
+# Step 6: Build and Deploy Frontend to S3 + Invalidate CloudFront
+echo "==> Step 6: Building frontend production bundle..."
 (cd frontend && npm ci && npm run build)
 
 echo "==> Syncing static frontend to S3 (${S3_BUCKET})..."
@@ -151,14 +117,10 @@ aws s3 sync frontend/dist/ "s3://${S3_BUCKET}/" --delete --region "${AWS_REGION}
 echo "==> Invalidating CloudFront cache..."
 aws cloudfront create-invalidation --distribution-id "${CF_DIST_ID}" --paths "/*"
 
-# Step 6: Force New Deployment on ECS
-echo "==> Step 6: Rolling out new ECS services..."
-aws ecs update-service --cluster "conflux-cluster-${ENVIRONMENT}" --service "conflux-api-service-${ENVIRONMENT}" --force-new-deployment --region "${AWS_REGION}" > /dev/null
-aws ecs update-service --cluster "conflux-cluster-${ENVIRONMENT}" --service "conflux-worker-service-${ENVIRONMENT}" --force-new-deployment --region "${AWS_REGION}" > /dev/null
-
 echo "==> Step 7: Verifying CloudFront backend health check (/api/health)..."
 sleep 5
 HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${CF_URL}/api/health" || echo "000")
+echo "CloudFront /api/health returned HTTP ${HEALTH_STATUS}"
 echo "CloudFront /api/health returned HTTP ${HEALTH_STATUS}"
 
 echo "=========================================================="

@@ -22,27 +22,36 @@ if [ -z "$SUBNETS" ] || [ -z "$SECURITY_GROUP" ]; then
 fi
 
 echo "==> Launching one-off ECS migration task..."
-TASK_ARN=$(aws ecs run-task \
+RUN_OUTPUT=$(aws ecs run-task \
   --cluster "${CLUSTER_NAME}" \
   --task-definition "${TASK_DEF_ARN}" \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SECURITY_GROUP}],assignPublicIp=DISABLED}" \
   --overrides '{"containerOverrides": [{"name": "conflux-api", "command": ["alembic", "upgrade", "head"]}]}' \
-  --query 'tasks[0].taskArn' \
-  --output text)
+  --output json)
+
+TASK_ARN=$(echo "$RUN_OUTPUT" | python3 -c "import sys, json; data=json.load(sys.stdin); tasks=data.get('tasks', []); print(tasks[0]['taskArn'] if tasks else '')")
+
+if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+  FAILURES=$(echo "$RUN_OUTPUT" | python3 -c "import sys, json; data=json.load(sys.stdin); print(json.dumps(data.get('failures', [])))")
+  echo "ERROR: Failed to launch ECS migration task. Failures: ${FAILURES}"
+  exit 1
+fi
 
 echo "==> Migration task started: ${TASK_ARN}"
 echo "==> Waiting for migration task to complete..."
 
 aws ecs wait tasks-stopped --cluster "${CLUSTER_NAME}" --tasks "${TASK_ARN}"
 
-EXIT_CODE=$(aws ecs describe-tasks --cluster "${CLUSTER_NAME}" --tasks "${TASK_ARN}" --query 'tasks[0].containers[0].exitCode' --output text)
+DESCRIBE_TASK=$(aws ecs describe-tasks --cluster "${CLUSTER_NAME}" --tasks "${TASK_ARN}" --output json)
+EXIT_CODE=$(echo "$DESCRIBE_TASK" | python3 -c "import sys, json; data=json.load(sys.stdin); containers=data.get('tasks', [{}])[0].get('containers', [{}]); print(containers[0].get('exitCode', -1))")
+STOP_REASON=$(echo "$DESCRIBE_TASK" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('tasks', [{}])[0].get('stoppedReason', ''))")
 
-if [ "$EXIT_CODE" -eq 0 ]; then
+if [ "$EXIT_CODE" = "0" ]; then
   echo "SUCCESS: Database migrations completed successfully (exit code 0)."
 else
-  echo "ERROR: Migration task failed with exit code: ${EXIT_CODE}"
+  echo "ERROR: Migration task failed with exit code: ${EXIT_CODE}. Reason: ${STOP_REASON}"
   echo "Fetching CloudWatch logs..."
-  aws logs tail "/ecs/conflux-${ENVIRONMENT}" --since 5m --filter-pattern "alembic"
+  aws logs tail "/ecs/conflux-${ENVIRONMENT}" --since 5m --filter-pattern "alembic" || true
   exit 1
 fi

@@ -1,3 +1,4 @@
+import base64
 import json
 from typing import List, Union
 from pydantic import field_validator, model_validator
@@ -85,14 +86,30 @@ class Settings(BaseSettings):
         if self.APP_ENV == "production":
             if self.USE_FAKE_STORAGE_PROVIDER:
                 raise ValueError("USE_FAKE_STORAGE_PROVIDER cannot be True in production environment.")
-            if "insecure" in self.SESSION_SECRET or "development" in self.SESSION_SECRET:
-                raise ValueError("Insecure SESSION_SECRET cannot be used in production.")
-            if "insecure" in self.CSRF_SECRET or "development" in self.CSRF_SECRET:
-                raise ValueError("Insecure CSRF_SECRET cannot be used in production.")
-            if "test_key" in self.TOKEN_ENCRYPTION_KEY:
-                raise ValueError("Default TOKEN_ENCRYPTION_KEY cannot be used in production.")
+            if "insecure" in self.SESSION_SECRET or "development" in self.SESSION_SECRET or len(self.SESSION_SECRET) < 32:
+                raise ValueError("Insecure or insufficient SESSION_SECRET in production (min 32 chars).")
+            if "insecure" in self.CSRF_SECRET or "development" in self.CSRF_SECRET or len(self.CSRF_SECRET) < 32:
+                raise ValueError("Insecure or insufficient CSRF_SECRET in production (min 32 chars).")
+
+            # Validate TOKEN_ENCRYPTION_KEY format and exact 32-byte length
+            if "test_key" in self.TOKEN_ENCRYPTION_KEY or "replace_with" in self.TOKEN_ENCRYPTION_KEY:
+                raise ValueError("Default/placeholder TOKEN_ENCRYPTION_KEY cannot be used in production.")
+            try:
+                decoded_key = base64.urlsafe_b64decode(self.TOKEN_ENCRYPTION_KEY)
+                if len(decoded_key) != 32:
+                    raise ValueError(f"TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes (got {len(decoded_key)}).")
+            except Exception as e:
+                raise ValueError(f"TOKEN_ENCRYPTION_KEY is not a valid 32-byte urlsafe base64 string: {e}")
+
             if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
                 raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured in production.")
+            if "placeholder" in self.GOOGLE_CLIENT_ID or "placeholder" in self.GOOGLE_CLIENT_SECRET:
+                raise ValueError("Placeholder Google OAuth credentials cannot be used in production.")
+
+            if not self.DATABASE_URL.startswith(("postgresql://", "postgresql+asyncpg://", "postgres://")):
+                raise ValueError("Production DATABASE_URL must be a PostgreSQL connection URL.")
+            if not self.REDIS_URL.startswith(("redis://", "rediss://")):
+                raise ValueError("Production REDIS_URL must be a valid Redis connection URL.")
         return self
 
 

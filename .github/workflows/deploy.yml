@@ -123,7 +123,7 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Deploy / Update CloudFormation Stack
+      - name: Deploy / Update CloudFormation Stack (Zero Tasks Initial)
         run: |
           aws cloudformation deploy \
             --template-file infra/aws/cloudformation-template.yaml \
@@ -134,70 +134,50 @@ jobs:
                 EnvironmentName=${{ env.ENV_NAME }} \
                 UseExternalDatabase="true" \
                 DbPassword="${{ secrets.DB_MASTER_PASSWORD || 'ConfluxPass123!' }}" \
-                ImageTag="${{ steps.vars.outputs.IMAGE_TAG }}"
+                ImageTag="${{ steps.vars.outputs.IMAGE_TAG }}" \
+                ApiDesiredCount=0 \
+                WorkerDesiredCount=0
+
+      - name: Fetch CloudFormation Stack Outputs
+        id: stack
+        run: |
+          STACK="conflux-infra-${{ env.ENV_NAME }}"
+          REGION="${{ env.AWS_REGION }}"
+          SECRETS_ARN=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='SecretsManagerArn'].OutputValue" --output text)
+          REDIS_ADDR=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='RedisAddress'].OutputValue" --output text 2>/dev/null || echo "")
+          REDIS_PORT=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='RedisPort'].OutputValue" --output text 2>/dev/null || echo "6379")
+          CF_URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text)
+          S3_BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text)
+          CF_DIST_ID=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
+
+          echo "secrets_arn=${SECRETS_ARN}" >> $GITHUB_OUTPUT
+          echo "redis_addr=${REDIS_ADDR}" >> $GITHUB_OUTPUT
+          echo "redis_port=${REDIS_PORT}" >> $GITHUB_OUTPUT
+          echo "cf_url=${CF_URL}" >> $GITHUB_OUTPUT
+          echo "s3_bucket=${S3_BUCKET}" >> $GITHUB_OUTPUT
+          echo "cf_dist_id=${CF_DIST_ID}" >> $GITHUB_OUTPUT
 
       - name: Populate & Preserve Application Secrets in Secrets Manager
         env:
-          STACK_NAME: conflux-infra-${{ env.ENV_NAME }}
+          SECRETS_ARN: ${{ steps.stack.outputs.secrets_arn }}
+          REDIS_ADDR: ${{ steps.stack.outputs.redis_addr }}
+          REDIS_PORT: ${{ steps.stack.outputs.redis_port }}
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL || secrets.DATABASE_URL }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          AWS_REGION: ${{ env.AWS_REGION }}
         run: |
-          SECRETS_ARN=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='SecretsManagerArn'].OutputValue" --output text)
-          REDIS_ADDR=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='RedisAddress'].OutputValue" --output text 2>/dev/null || echo "")
-          REDIS_PORT=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='RedisPort'].OutputValue" --output text 2>/dev/null || echo "6379")
-          CURRENT_SECRET=$(aws secretsmanager get-secret-value --secret-id ${SECRETS_ARN} --region ${{ env.AWS_REGION }} --query "SecretString" --output text 2>/dev/null || echo "{}")
-
-          python3 - <<EOF
-          import json, secrets, base64, os, subprocess
-
-          try:
-              curr = json.loads('''$CURRENT_SECRET''')
-          except Exception:
-              curr = {}
-
-          token_key = curr.get('TOKEN_ENCRYPTION_KEY')
-          if not token_key or 'replace_with' in token_key or 'dGVzdF9' in token_key:
-              token_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
-
-          session_sec = curr.get('SESSION_SECRET')
-          if not session_sec or 'replace_with' in session_sec or 'development' in session_sec:
-              session_sec = secrets.token_hex(32)
-
-          csrf_sec = curr.get('CSRF_SECRET')
-          if not csrf_sec or 'replace_with' in csrf_sec or 'development' in csrf_sec:
-              csrf_sec = secrets.token_hex(32)
-
-          google_id = os.environ.get('GOOGLE_CLIENT_ID') or curr.get('GOOGLE_CLIENT_ID', 'placeholder')
-          google_sec = os.environ.get('GOOGLE_CLIENT_SECRET') or curr.get('GOOGLE_CLIENT_SECRET', 'placeholder')
-          redis_addr = os.environ.get('REDIS_ADDR')
-          redis_port = os.environ.get('REDIS_PORT', '6379')
-          redis_url = f"redis://{redis_addr}:{redis_port}/0" if redis_addr else curr.get('REDIS_URL', 'redis://localhost:6379/0')
-          db_url = os.environ.get('NEON_DATABASE_URL') or curr.get('DATABASE_URL', '')
-
-          updated = {
-              'DATABASE_URL': db_url,
-              'DATABASE_SYNC_URL': db_url,
-              'REDIS_URL': redis_url,
-              'SESSION_SECRET': session_sec,
-              'CSRF_SECRET': csrf_sec,
-              'TOKEN_ENCRYPTION_KEY': token_key,
-              'GOOGLE_CLIENT_ID': google_id,
-              'GOOGLE_CLIENT_SECRET': google_sec
-          }
-          
-          subprocess.run([
-              'aws', 'secretsmanager', 'put-secret-value',
-              '--secret-id', os.environ['SECRETS_ARN'],
-              '--secret-string', json.dumps(updated),
-              '--region', os.environ['AWS_REGION']
-          ], check=True)
-          EOF
+          python3 infra/aws/populate_secrets.py
 
       - name: Run Database Migrations on ECS
         run: |
           chmod +x infra/aws/run-migration.sh
           ./infra/aws/run-migration.sh ${{ env.ENV_NAME }}
+
+      - name: Scale Up and Roll Out ECS Services
+        run: |
+          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-api-service-${{ env.ENV_NAME }} --desired-count 2 --force-new-deployment --region ${{ env.AWS_REGION }}
+          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-worker-service-${{ env.ENV_NAME }} --desired-count 1 --force-new-deployment --region ${{ env.AWS_REGION }}
 
       - name: Build Frontend Production Bundle
         run: |
@@ -207,19 +187,10 @@ jobs:
 
       - name: Deploy Frontend to Amazon S3 & Invalidate CloudFront
         run: |
-          S3_BUCKET=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text)
-          CF_DIST_ID=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
-          
-          aws s3 sync frontend/dist/ s3://${S3_BUCKET}/ --delete --region ${{ env.AWS_REGION }}
-          aws cloudfront create-invalidation --distribution-id ${CF_DIST_ID} --paths "/*"
-
-      - name: Trigger Rolling Deployment of ECS Services
-        run: |
-          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-api-service-${{ env.ENV_NAME }} --force-new-deployment --region ${{ env.AWS_REGION }}
-          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-worker-service-${{ env.ENV_NAME }} --force-new-deployment --region ${{ env.AWS_REGION }}
+          aws s3 sync frontend/dist/ "s3://${{ steps.stack.outputs.s3_bucket }}/" --delete --region ${{ env.AWS_REGION }}
+          aws cloudfront create-invalidation --distribution-id "${{ steps.stack.outputs.cf_dist_id }}" --paths "/*"
 
       - name: Verify CloudFront Backend Health Check
         run: |
-          CF_URL=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text)
-          echo "Testing health check at ${CF_URL}/api/health..."
-          curl -f -s "${CF_URL}/api/health" || echo "Note: Initial DNS/CloudFront propagation may take 1-2 minutes."
+          echo "Testing health check at ${{ steps.stack.outputs.cf_url }}/api/health..."
+          curl -f -s "${{ steps.stack.outputs.cf_url }}/api/health" || echo "Note: Initial DNS/CloudFront propagation may take 1-2 minutes."

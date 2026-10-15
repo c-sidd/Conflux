@@ -22,26 +22,38 @@ if (-not $SubnetList -or -not $SecurityGroup) {
 
 Write-Host "==> Launching one-off ECS migration task..." -ForegroundColor Cyan
 $Overrides = '{\"containerOverrides\": [{\"name\": \"conflux-api\", \"command\": [\"alembic\", \"upgrade\", \"head\"]}]}'
-$TaskArn = (aws ecs run-task `
+$RunOutputJson = (aws ecs run-task `
     --cluster $ClusterName `
     --task-definition $TaskDefArn `
     --launch-type FARGATE `
     --network-configuration "awsvpcConfiguration={subnets=[$SubnetList],securityGroups=[$SecurityGroup],assignPublicIp=DISABLED}" `
     --overrides $Overrides `
-    --query 'tasks[0].taskArn' `
-    --output text).Trim()
+    --output json)
+
+$RunOutput = $RunOutputJson | ConvertFrom-Json
+$TaskArn = if ($RunOutput.tasks -and $RunOutput.tasks.Count -gt 0) { $RunOutput.tasks[0].taskArn } else { "" }
+
+if (-not $TaskArn) {
+    $Failures = if ($RunOutput.failures) { $RunOutput.failures | ConvertTo-Json -Compress } else { "No tasks launched" }
+    Write-Host "ERROR: Failed to launch ECS migration task. Failures: $Failures" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "==> Migration task started: $TaskArn" -ForegroundColor Cyan
 Write-Host "==> Waiting for migration task to complete..." -ForegroundColor Cyan
 
 aws ecs wait tasks-stopped --cluster $ClusterName --tasks $TaskArn
 
-$ExitCode = (aws ecs describe-tasks --cluster $ClusterName --tasks $TaskArn --query 'tasks[0].containers[0].exitCode' --output text).Trim()
+$DescribeOutputJson = (aws ecs describe-tasks --cluster $ClusterName --tasks $TaskArn --output json)
+$DescribeOutput = $DescribeOutputJson | ConvertFrom-Json
+$Container = $DescribeOutput.tasks[0].containers[0]
+$ExitCode = $Container.exitCode
 
-if ($ExitCode -eq "0") {
+if ($ExitCode -eq 0) {
     Write-Host "SUCCESS: Database migrations completed successfully (exit code 0)." -ForegroundColor Green
 } else {
-    Write-Host "ERROR: Migration task failed with exit code: $ExitCode" -ForegroundColor Red
+    $StopReason = $DescribeOutput.tasks[0].stoppedReason
+    Write-Host "ERROR: Migration task failed with exit code: $ExitCode. Reason: $StopReason" -ForegroundColor Red
     aws logs tail "/ecs/conflux-$Environment" --since 5m --filter-pattern "alembic"
     exit 1
 }
