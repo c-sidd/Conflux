@@ -2,12 +2,22 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from './AuthContext';
-import { HardDrive, Lock, Mail } from 'lucide-react';
+import { HardDrive, HelpCircle, KeyRound, Lock, Mail } from 'lucide-react';
+
+const PRESET_QUESTIONS = [
+  'What was the name of your first school?',
+  'What was the name of your first pet?',
+  'In what city were you born?',
+  "What is your mother's maiden name?",
+  'What was the make of your first car?',
+];
 
 export const SignUpPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [securityQuestion, setSecurityQuestion] = useState(PRESET_QUESTIONS[0]);
+  const [securityAnswer, setSecurityAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -27,9 +37,14 @@ export const SignUpPage: React.FC = () => {
       return;
     }
 
+    if (!securityAnswer.trim()) {
+      setError('Please provide an answer to the security question for password recovery');
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(email, password);
+      await register(email, password, securityQuestion, securityAnswer.trim());
       navigate('/accounts'); // direct to onboarding to connect first Drive account!
     } catch (err: any) {
       setError(err.message || 'Registration failed');
@@ -110,7 +125,50 @@ export const SignUpPage: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" variant="primary" className="w-full mt-2" isLoading={loading}>
+            {/* Security Question for Password Recovery */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-sm font-medium text-slate-700">
+                Password Recovery Question
+              </label>
+              <p className="text-xs text-slate-500 mb-1">
+                Used to verify your identity if you ever forget your password
+              </p>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <HelpCircle className="h-4 w-4" />
+                </div>
+                <select
+                  value={securityQuestion}
+                  onChange={(e) => setSecurityQuestion(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-brand-500 focus:border-brand-500 text-sm bg-white"
+                >
+                  {PRESET_QUESTIONS.map((q) => (
+                    <option key={q} value={q}>
+                      {q}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Security Answer</label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={securityAnswer}
+                  onChange={(e) => setSecurityAnswer(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-brand-500 focus:border-brand-500 text-sm"
+                  placeholder="Your answer (case-insensitive)"
+                />
+              </div>
+            </div>
+
+            <Button type="submit" variant="primary" className="w-full mt-3" isLoading={loading}>
               Sign Up
             </Button>
           </form>

@@ -12,6 +12,8 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     email_verified_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(32), nullable=False, default="active")  # active, pending, disabled
+    security_question = Column(String(255), nullable=True)
+    security_answer_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),

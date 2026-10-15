@@ -20,10 +20,18 @@ class UserRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create_user(self, email: str, password_hash: str) -> User:
+    async def create_user(
+        self,
+        email: str,
+        password_hash: str,
+        security_question: Optional[str] = None,
+        security_answer_hash: Optional[str] = None
+    ) -> User:
         user = User(
             email_normalized=email.strip().lower(),
             password_hash=password_hash,
+            security_question=security_question,
+            security_answer_hash=security_answer_hash,
             status="active"
         )
         self.db.add(user)

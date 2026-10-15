@@ -1,6 +1,6 @@
 import json
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,8 +49,8 @@ class Settings(BaseSettings):
     USE_FAKE_STORAGE_PROVIDER: bool = True
 
     # Uploads and files
-    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024 * 1024  # 10 GB
-    UPLOAD_CHUNK_SIZE_BYTES: int = 5 * 1024 * 1024        # 5 MB
+    MAX_UPLOAD_SIZE_BYTES: int = 100 * 1024 * 1024  # Direct buffer capped at 100 MB for safety
+    UPLOAD_CHUNK_SIZE_BYTES: int = 5 * 1024 * 1024   # 5 MB
     RESERVATION_EXPIRY_MINUTES: int = 60
 
     # Rate Limiting
@@ -79,6 +79,21 @@ class Settings(BaseSettings):
             except Exception:
                 return [i.strip() for i in v.split(",") if i.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_production_config(self) -> "Settings":
+        if self.APP_ENV == "production":
+            if self.USE_FAKE_STORAGE_PROVIDER:
+                raise ValueError("USE_FAKE_STORAGE_PROVIDER cannot be True in production environment.")
+            if "insecure" in self.SESSION_SECRET or "development" in self.SESSION_SECRET:
+                raise ValueError("Insecure SESSION_SECRET cannot be used in production.")
+            if "insecure" in self.CSRF_SECRET or "development" in self.CSRF_SECRET:
+                raise ValueError("Insecure CSRF_SECRET cannot be used in production.")
+            if "test_key" in self.TOKEN_ENCRYPTION_KEY:
+                raise ValueError("Default TOKEN_ENCRYPTION_KEY cannot be used in production.")
+            if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
+                raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured in production.")
+        return self
 
 
 settings = Settings()

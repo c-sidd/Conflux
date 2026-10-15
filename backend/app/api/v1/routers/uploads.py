@@ -2,6 +2,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies.auth import get_current_user
+from app.core.config import settings
+from app.core.errors import ConfluxException
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.operation import (
@@ -36,7 +38,26 @@ async def complete_upload(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    content = await file.read()
+    # Enforce bounded memory streaming to prevent container OOM
+    max_bytes = settings.MAX_UPLOAD_SIZE_BYTES
+    chunk_size = 1024 * 1024  # 1 MB chunk
+    total_read = 0
+    chunks = []
+
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise ConfluxException(
+                "PAYLOAD_TOO_LARGE",
+                f"File size exceeds maximum allowed direct upload size of {max_bytes // (1024 * 1024)} MB.",
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        chunks.append(chunk)
+
+    content = b"".join(chunks)
     service = OperationService(db)
     return await service.complete_upload(
         operation_id=operation_id,

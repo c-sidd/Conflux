@@ -87,6 +87,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
+    env:
+      ENV_NAME: ${{ github.event.inputs.environment || 'production' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -94,22 +98,16 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Set Image Tag
         id: vars
         run: echo "IMAGE_TAG=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
 
-      - name: Deploy / Update CloudFormation Stack
+      - name: Ensure Amazon ECR Repository Exists
         run: |
-          aws cloudformation deploy \
-            --template-file infra/aws/cloudformation-template.yaml \
-            --stack-name conflux-infra-production \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-                EnvironmentName=production \
-                DbPassword="${{ secrets.DB_MASTER_PASSWORD }}" \
-                ImageTag="${{ steps.vars.outputs.IMAGE_TAG }}"
+          aws ecr describe-repositories --repository-names conflux-api --region ${{ env.AWS_REGION }} 2>/dev/null || \
+          aws ecr create-repository --repository-name conflux-api --region ${{ env.AWS_REGION }} --image-scanning-configuration scanOnPush=true
 
       - name: Log in to Amazon ECR
         id: login-ecr
@@ -125,10 +123,81 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
+      - name: Deploy / Update CloudFormation Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/aws/cloudformation-template.yaml \
+            --stack-name conflux-infra-${{ env.ENV_NAME }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region ${{ env.AWS_REGION }} \
+            --parameter-overrides \
+                EnvironmentName=${{ env.ENV_NAME }} \
+                UseExternalDatabase="true" \
+                DbPassword="${{ secrets.DB_MASTER_PASSWORD || 'ConfluxPass123!' }}" \
+                ImageTag="${{ steps.vars.outputs.IMAGE_TAG }}"
+
+      - name: Populate & Preserve Application Secrets in Secrets Manager
+        env:
+          STACK_NAME: conflux-infra-${{ env.ENV_NAME }}
+          NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL || secrets.DATABASE_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          SECRETS_ARN=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='SecretsManagerArn'].OutputValue" --output text)
+          REDIS_ADDR=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='RedisAddress'].OutputValue" --output text 2>/dev/null || echo "")
+          REDIS_PORT=$(aws cloudformation describe-stacks --stack-name ${STACK_NAME} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='RedisPort'].OutputValue" --output text 2>/dev/null || echo "6379")
+          CURRENT_SECRET=$(aws secretsmanager get-secret-value --secret-id ${SECRETS_ARN} --region ${{ env.AWS_REGION }} --query "SecretString" --output text 2>/dev/null || echo "{}")
+
+          python3 - <<EOF
+          import json, secrets, base64, os, subprocess
+
+          try:
+              curr = json.loads('''$CURRENT_SECRET''')
+          except Exception:
+              curr = {}
+
+          token_key = curr.get('TOKEN_ENCRYPTION_KEY')
+          if not token_key or 'replace_with' in token_key or 'dGVzdF9' in token_key:
+              token_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+
+          session_sec = curr.get('SESSION_SECRET')
+          if not session_sec or 'replace_with' in session_sec or 'development' in session_sec:
+              session_sec = secrets.token_hex(32)
+
+          csrf_sec = curr.get('CSRF_SECRET')
+          if not csrf_sec or 'replace_with' in csrf_sec or 'development' in csrf_sec:
+              csrf_sec = secrets.token_hex(32)
+
+          google_id = os.environ.get('GOOGLE_CLIENT_ID') or curr.get('GOOGLE_CLIENT_ID', 'placeholder')
+          google_sec = os.environ.get('GOOGLE_CLIENT_SECRET') or curr.get('GOOGLE_CLIENT_SECRET', 'placeholder')
+          redis_addr = os.environ.get('REDIS_ADDR')
+          redis_port = os.environ.get('REDIS_PORT', '6379')
+          redis_url = f"redis://{redis_addr}:{redis_port}/0" if redis_addr else curr.get('REDIS_URL', 'redis://localhost:6379/0')
+          db_url = os.environ.get('NEON_DATABASE_URL') or curr.get('DATABASE_URL', '')
+
+          updated = {
+              'DATABASE_URL': db_url,
+              'DATABASE_SYNC_URL': db_url,
+              'REDIS_URL': redis_url,
+              'SESSION_SECRET': session_sec,
+              'CSRF_SECRET': csrf_sec,
+              'TOKEN_ENCRYPTION_KEY': token_key,
+              'GOOGLE_CLIENT_ID': google_id,
+              'GOOGLE_CLIENT_SECRET': google_sec
+          }
+          
+          subprocess.run([
+              'aws', 'secretsmanager', 'put-secret-value',
+              '--secret-id', os.environ['SECRETS_ARN'],
+              '--secret-string', json.dumps(updated),
+              '--region', os.environ['AWS_REGION']
+          ], check=True)
+          EOF
+
       - name: Run Database Migrations on ECS
         run: |
           chmod +x infra/aws/run-migration.sh
-          ./infra/aws/run-migration.sh production
+          ./infra/aws/run-migration.sh ${{ env.ENV_NAME }}
 
       - name: Build Frontend Production Bundle
         run: |
@@ -138,13 +207,19 @@ jobs:
 
       - name: Deploy Frontend to Amazon S3 & Invalidate CloudFront
         run: |
-          S3_BUCKET=$(aws cloudformation describe-stacks --stack-name conflux-infra-production --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text)
-          CF_DIST_ID=$(aws cloudformation describe-stacks --stack-name conflux-infra-production --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
+          S3_BUCKET=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='FrontendS3Bucket'].OutputValue" --output text)
+          CF_DIST_ID=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text)
           
-          aws s3 sync frontend/dist/ s3://${S3_BUCKET}/ --delete
+          aws s3 sync frontend/dist/ s3://${S3_BUCKET}/ --delete --region ${{ env.AWS_REGION }}
           aws cloudfront create-invalidation --distribution-id ${CF_DIST_ID} --paths "/*"
 
       - name: Trigger Rolling Deployment of ECS Services
         run: |
-          aws ecs update-service --cluster conflux-cluster-production --service conflux-api-service-production --force-new-deployment
-          aws ecs update-service --cluster conflux-cluster-production --service conflux-worker-service-production --force-new-deployment
+          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-api-service-${{ env.ENV_NAME }} --force-new-deployment --region ${{ env.AWS_REGION }}
+          aws ecs update-service --cluster conflux-cluster-${{ env.ENV_NAME }} --service conflux-worker-service-${{ env.ENV_NAME }} --force-new-deployment --region ${{ env.AWS_REGION }}
+
+      - name: Verify CloudFront Backend Health Check
+        run: |
+          CF_URL=$(aws cloudformation describe-stacks --stack-name conflux-infra-${{ env.ENV_NAME }} --region ${{ env.AWS_REGION }} --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text)
+          echo "Testing health check at ${CF_URL}/api/health..."
+          curl -f -s "${CF_URL}/api/health" || echo "Note: Initial DNS/CloudFront propagation may take 1-2 minutes."

@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    security_question: Optional[str] = Field(default=None, max_length=255)
+    security_answer: Optional[str] = Field(default=None, max_length=255)
 
 
 class LoginRequest(BaseModel):
@@ -15,6 +17,21 @@ class LoginRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+class SecurityQuestionRequest(BaseModel):
+    email: EmailStr
+
+
+class SecurityQuestionResponse(BaseModel):
+    email: str
+    security_question: str
+
+
+class ResetPasswordWithQuestionRequest(BaseModel):
+    email: EmailStr
+    security_answer: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class ResetPasswordRequest(BaseModel):

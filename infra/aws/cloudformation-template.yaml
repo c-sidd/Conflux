@@ -561,17 +561,6 @@ Resources:
             ErrorCachingMinTTL: 0
 
   # ============================================================================
-  # 11. ECR Container Repositories
-  # ============================================================================
-  ApiRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: conflux-api
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      ImageTagMutability: MUTABLE
-
-  # ============================================================================
   # 12. IAM Roles for ECS Tasks
   # ============================================================================
   ECSTaskExecutionRole:
@@ -852,7 +841,7 @@ Outputs:
 
   ECRRepositoryUri:
     Description: ECR Repository URI for backend image pushes
-    Value: !GetAtt ApiRepository.RepositoryUri
+    Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/conflux-api'
 
   RDSAddress:
     Condition: ProvisionRDS

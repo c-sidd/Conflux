@@ -71,21 +71,24 @@ def create_application() -> FastAPI:
     # Register central error handling
     register_error_handlers(app)
 
-    # Health & Readiness checks
+    # Health & Readiness checks (exposed on root and /api for CloudFront routing)
     @app.get("/health", tags=["Health"])
+    @app.get("/api/health", tags=["Health"])
     async def health_check():
         return {"status": "ok", "app": settings.APP_NAME, "env": settings.APP_ENV}
 
     @app.get("/ready", tags=["Health"])
+    @app.get("/api/ready", tags=["Health"])
     async def readiness_check():
         try:
             async with async_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return {"status": "ready", "database": "connected"}
         except Exception as e:
+            logger.error(f"Readiness database probe failed: {e}")
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content={"status": "not_ready", "database": "disconnected", "error": str(e)}
+                content={"status": "not_ready", "database": "disconnected"}
             )
 
     # Mount API v1

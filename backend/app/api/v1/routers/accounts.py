@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies.auth import get_current_user
@@ -29,31 +29,46 @@ async def list_connected_accounts(
 
 @router.post("/google/authorize", response_model=GoogleAuthorizeResponse)
 async def authorize_google_account(
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     service = AccountService(db)
     data = service.get_authorization_url(current_user.id)
-    return GoogleAuthorizeResponse(**data)
+    response.set_cookie(
+        key="conflux_oauth_nonce",
+        value=data["nonce"],
+        httponly=True,
+        secure=settings.APP_ENV == "production",
+        samesite="lax",
+        max_age=600,
+        path="/"
+    )
+    return GoogleAuthorizeResponse(
+        authorization_url=data["authorization_url"],
+        state=data["state"]
+    )
 
 
 @router.get("/google/callback")
 async def google_oauth_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     db: AsyncSession = Depends(get_db)
 ):
-    # State format: "<user_id>:<nonce>"
-    user_id = state.split(":")[0] if ":" in state else ""
+    expected_nonce = request.cookies.get("conflux_oauth_nonce")
     service = AccountService(db)
-    account = await service.handle_oauth_callback(user_id, code, state)
+    account = await service.handle_oauth_callback(code=code, state=state, expected_nonce=expected_nonce)
 
     # Initial sync
     sync_service = SyncService(db)
-    await sync_service.sync_account(account.id, user_id)
+    await sync_service.sync_account(account.id, account.user_id)
 
-    # Redirect user to the frontend accounts view
-    return RedirectResponse(url=f"{settings.PUBLIC_APP_URL}/accounts?connected={account.id}")
+    # Redirect user to the frontend accounts view and delete cookie
+    redirect_resp = RedirectResponse(url=f"{settings.PUBLIC_APP_URL}/accounts?connected={account.id}")
+    redirect_resp.delete_cookie(key="conflux_oauth_nonce", path="/")
+    return redirect_resp
 
 
 @router.get("/{account_id}", response_model=ConnectedAccountResponse)

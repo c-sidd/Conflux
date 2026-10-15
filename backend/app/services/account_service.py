@@ -1,7 +1,10 @@
+import hashlib
+import hmac
 import json
 import secrets
+import time
 import urllib.parse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
@@ -19,16 +22,58 @@ class AccountService:
         self.repo = AccountRepository(db)
         self.provider = get_storage_provider()
 
+    def generate_oauth_state(self, user_id: str) -> Tuple[str, str]:
+        """
+        Generates a cryptographically signed OAuth state and nonce to prevent CSRF and session fixation.
+        State format: <nonce>.<timestamp>.<user_id>.<hmac_signature>
+        """
+        nonce = secrets.token_urlsafe(24)
+        ts_str = str(int(time.time()))
+        payload = f"{nonce}:{ts_str}:{user_id}"
+        sig = hmac.new(settings.CSRF_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        state = f"{nonce}.{ts_str}.{user_id}.{sig}"
+        return state, nonce
+
+    def verify_oauth_state(self, state: str, expected_nonce: Optional[str] = None) -> str:
+        """
+        Verifies HMAC signature, 10-minute validity window, and nonce binding.
+        Returns the authenticating user_id.
+        """
+        # Fallback for mock test state: "<user_id>:fake_nonce"
+        if settings.USE_FAKE_STORAGE_PROVIDER and ":" in state and "." not in state:
+            return state.split(":", 1)[0]
+
+        if not state or state.count(".") != 3:
+            raise ConfluxException("INVALID_OAUTH_STATE", "Invalid OAuth state format", status_code=400)
+
+        nonce, ts_str, user_id, sig = state.split(".", 3)
+
+        if expected_nonce and nonce != expected_nonce:
+            raise ConfluxException("INVALID_OAUTH_STATE", "OAuth nonce mismatch or session binding error", status_code=400)
+
+        try:
+            ts = int(ts_str)
+            if time.time() - ts > 600:
+                raise ConfluxException("EXPIRED_OAUTH_STATE", "OAuth authorization session expired. Please try again.", status_code=400)
+        except ValueError:
+            raise ConfluxException("INVALID_OAUTH_STATE", "Invalid OAuth timestamp", status_code=400)
+
+        payload = f"{nonce}:{ts_str}:{user_id}"
+        expected_sig = hmac.new(settings.CSRF_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            raise ConfluxException("INVALID_OAUTH_STATE", "Forged or tampered OAuth state parameter", status_code=400)
+
+        return user_id
+
     def get_authorization_url(self, user_id: str) -> Dict[str, str]:
         """
-        Builds Google OAuth 2.0 authorization URL with CSRF state token.
+        Builds Google OAuth 2.0 authorization URL with signed CSRF state token.
         """
-        state = f"{user_id}:{secrets.token_urlsafe(32)}"
+        state, nonce = self.generate_oauth_state(user_id)
 
         if settings.USE_FAKE_STORAGE_PROVIDER:
-            # Deterministic local/test mock authorization url
             auth_url = f"{settings.API_PUBLIC_URL}/api/v1/accounts/google/callback?code=fake_auth_code&state={state}"
-            return {"authorization_url": auth_url, "state": state}
+            return {"authorization_url": auth_url, "state": state, "nonce": nonce}
 
         params = {
             "client_id": settings.GOOGLE_CLIENT_ID,
@@ -40,17 +85,16 @@ class AccountService:
             "state": state,
         }
         auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
-        return {"authorization_url": auth_url, "state": state}
+        return {"authorization_url": auth_url, "state": state, "nonce": nonce}
 
     async def handle_oauth_callback(
         self,
-        current_user_id: str,
         code: str,
-        state: str
+        state: str,
+        expected_nonce: Optional[str] = None
     ) -> ConnectedAccount:
-        # Validate state binds to the initiating user
-        if not state or not state.startswith(f"{current_user_id}:"):
-            raise ConfluxException("INVALID_OAUTH_STATE", "OAuth state mismatch or unauthorized session binding", status_code=400)
+        # Validate state cryptographically binds to the user and nonce
+        user_id = self.verify_oauth_state(state, expected_nonce)
 
         if settings.USE_FAKE_STORAGE_PROVIDER:
             # Fake token exchange
@@ -101,7 +145,7 @@ class AccountService:
         encrypted_token_str = json.dumps(encrypted_payload)
 
         account = await self.repo.create_or_reconnect(
-            user_id=current_user_id,
+            user_id=user_id,
             provider="GOOGLE_DRIVE",
             provider_account_id=provider_account_id,
             email=email,
@@ -111,7 +155,7 @@ class AccountService:
         )
 
         # Refresh quota immediately
-        await self.refresh_quota(account.id, current_user_id)
+        await self.refresh_quota(account.id, user_id)
         return account
 
     async def list_accounts(self, user_id: str) -> List[ConnectedAccountResponse]:

@@ -2,7 +2,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
-from app.core.errors import AuthRequiredException, ConflictException, ResourceNotFoundException
+from app.core.errors import (
+    AuthRequiredException,
+    ConflictException,
+    ConfluxException,
+    ResourceNotFoundException,
+)
 from app.core.security import (
     generate_password_reset_token,
     generate_session_token,
@@ -10,7 +15,7 @@ from app.core.security import (
     hash_session_token,
     verify_password,
 )
-from app.models.user import User
+from app.models.user import User, UserSession
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
 
@@ -25,7 +30,16 @@ class AuthService:
             raise ConflictException("An account with this email already exists")
 
         pw_hash = hash_password(req.password)
-        user = await self.repo.create_user(email=req.email, password_hash=pw_hash)
+        ans_hash = None
+        if req.security_answer:
+            ans_hash = hash_password(req.security_answer.strip().lower())
+
+        user = await self.repo.create_user(
+            email=req.email,
+            password_hash=pw_hash,
+            security_question=req.security_question,
+            security_answer_hash=ans_hash
+        )
 
         # Create session immediately upon registration
         raw_token, token_hash = generate_session_token()
@@ -63,7 +77,7 @@ class AuthService:
             token_hash = hash_session_token(raw_session_token)
             await self.repo.revoke_session(token_hash)
 
-    async def authenticate_session(self, raw_session_token: str) -> User:
+    async def authenticate_session_with_details(self, raw_session_token: str) -> Tuple[User, UserSession]:
         if not raw_session_token:
             raise AuthRequiredException("No session token provided")
 
@@ -78,12 +92,39 @@ class AuthService:
 
         # Touch session activity
         await self.repo.touch_session(session.id)
+        return user, session
+
+    async def authenticate_session(self, raw_session_token: str) -> User:
+        user, _ = await self.authenticate_session_with_details(raw_session_token)
         return user
+
+    async def get_security_question(self, email: str) -> Optional[str]:
+        user = await self.repo.get_by_email(email)
+        if not user or not user.security_question:
+            return None
+        return user.security_question
+
+    async def reset_password_with_question(
+        self,
+        email: str,
+        security_answer: str,
+        new_password: str
+    ) -> None:
+        user = await self.repo.get_by_email(email)
+        if not user or not user.security_answer_hash:
+            raise ConfluxException("SECURITY_ANSWER_MISMATCH", "Invalid email or security answer", status_code=400)
+
+        norm_answer = security_answer.strip().lower()
+        if not verify_password(norm_answer, user.security_answer_hash):
+            raise ConfluxException("SECURITY_ANSWER_MISMATCH", "Invalid security answer", status_code=400)
+
+        new_hash = hash_password(new_password)
+        await self.repo.update_password(user.id, new_hash)
+        await self.repo.revoke_all_user_sessions(user.id)
 
     async def forgot_password(self, email: str) -> Optional[str]:
         """
-        Generates single-use reset token. Returns raw token for email sending.
-        Generic response protects against account enumeration.
+        Generates single-use reset token for fallback / programmatic flows.
         """
         user = await self.repo.get_by_email(email)
         if not user:
